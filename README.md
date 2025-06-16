@@ -5,18 +5,16 @@
 
 Webitel Voice SDK provides a simple way to integrate voice calling functionality into your Android applications.  
 
-It offers built-in support for:
+It offers built-in support for:  
   • User authentication  
   • Call control (mute, hold, digits, etc.)  
   • Real-time audio streaming  
   • Call state and event tracking
 
-You can authenticate users using either a structured user object or a signed JWT token with embedded identity claims.
-
 
 ## Installation
 
-1.	Add JitPack to your root build.gradle (if not already added):
+1.	Add `JitPack` to your root `build.gradle` (if not already added):
 ```groovy
 allprojects {
     repositories {
@@ -25,7 +23,7 @@ allprojects {
 }
 ```
 
-2. Add the SDK dependency to your module build.gradle:
+2. Add the SDK dependency to your module `build.gradle`:
 ```groovy
 dependencies {
     implementation 'com.github.webitel:voice-sdk-android:<latest-version>'
@@ -39,7 +37,7 @@ dependencies {
 
 ### Initialize the SDK
 
-Before making calls, initialize the SDK by building a VoiceClient instance:
+Before making calls, initialize the SDK by building a `VoiceClient` instance:
 ```kotlin
 val voiceClient = VoiceClient.Builder(
     application = application,
@@ -82,7 +80,7 @@ val call = voiceClient.makeAudioCall(callListener)
 ### Call Controls
 
 The SDK provides asynchronous methods to manage active calls.
-Each method returns a Result<Unit>, allowing you to handle success or failure via onSuccess / onFailure.
+Each method returns a `Result<Unit>`, allowing you to handle success or failure via `onSuccess` / `onFailure`.
 
 #### Sending DTMF Tones
 
