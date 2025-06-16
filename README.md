@@ -54,7 +54,9 @@ val voiceClient = VoiceClient.Builder(
 
 You can authenticate using one of the two supported methods:
 
-#### Option 1 – via User Object:
+#### Option 1 – via User Object
+
+Pass a structured User object to the client:
 ```kotlin
 val user = User.Builder(
     iss = "https://demo.webitel.com/portal",
@@ -66,9 +68,18 @@ voiceClient.setUser(user)
 ```
 
 #### Option 2 – via JWT Token:
+
+You can authenticate with a raw JWT string either before or during the call.
 ```kotlin
+// Set JWT globally
 voiceClient.setUserJWT("your-jwt-token")
 ```
+or
+```kotlin
+// Provide JWT directly when starting the call
+voiceClient.makeAudioCall("your-jwt-token", callListener)
+```
+> Both options will authorize the user before initiating the call.
 
 
 ### Make a Call
