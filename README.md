@@ -6,14 +6,13 @@
 Webitel Voice SDK provides a simple way to integrate voice calling functionality into your Android applications.  
 
 It offers built-in support for:
- • User authentication  
- • Call control (mute, hold, digits, etc.)  
- • Real-time audio streaming  
- • Call state and event tracking  
+  • User authentication  
+  • Call control (mute, hold, digits, etc.)  
+  • Real-time audio streaming  
+  • Call state and event tracking
 
 You can authenticate users using either a structured user object or a signed JWT token with embedded identity claims.
 
----
 
 ## Installation
 
@@ -34,9 +33,9 @@ dependencies {
 ```
 > Replace <latest-version/> with the latest release.
 
----
 
 ## 🚀 Getting Started
+
 
 ### Initialize the SDK
 
@@ -52,13 +51,12 @@ val voiceClient = VoiceClient.Builder(
 ```
 > Optional parameters: deviceId, appName, appVersion, user
 
----
 
 ### Authentication
 
 You can authenticate using one of the two supported methods:
 
-**Option 1 – via User Object:**
+#### Option 1 – via User Object:
 ```kotlin
 val user = User.Builder(
     iss = "https://demo.webitel.com/portal",
@@ -69,12 +67,11 @@ val user = User.Builder(
 voiceClient.setUser(user)
 ```
 
-**Option 2 – via JWT Token:**
+#### Option 2 – via JWT Token:
 ```kotlin
 voiceClient.setUserJWT("your-jwt-token")
 ```
 
----
 
 ### Make a Call
 
@@ -82,12 +79,12 @@ voiceClient.setUserJWT("your-jwt-token")
 val call = voiceClient.makeAudioCall(callListener)
 ```
 
-
 ### Call Controls
+
 The SDK provides asynchronous methods to manage active calls.
 Each method returns a Result<Unit>, allowing you to handle success or failure via onSuccess / onFailure.
 
-Sending DTMF Tones
+#### Sending DTMF Tones
 
 ```kotlin
 call.sendDTMF(value)
@@ -95,7 +92,7 @@ call.sendDTMF(value)
     .onFailure { Log.e(TAG, "DTMF error: ${it.message}", it) }
 ```
 
-Mute / Unmute Microphone
+#### Mute / Unmute Microphone
 
 ```kotlin
 call.mute(true)
@@ -103,7 +100,7 @@ call.mute(true)
     .onFailure { Log.e(TAG, "Mute error: ${it.message}", it) }
 ```
 
-Hold / Resume Call
+#### Hold / Resume Call
 
 ```kotlin
 call.hold(true)
@@ -111,7 +108,7 @@ call.hold(true)
     .onFailure { Log.e(TAG, "Hold error: ${it.message}", it) }
 ```
 
-Disconnect Call
+#### Disconnect Call
 
 ```kotlin
 call.disconnect()
@@ -119,6 +116,5 @@ call.disconnect()
     .onFailure { Log.e(TAG, "Disconnect error: ${it.message}", it) }
 ```
 
----
 
 For more information see the full documentation. 🚀
