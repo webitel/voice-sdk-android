@@ -239,10 +239,10 @@ internal class WebitelCall(
     }
 
 
-    @Throws(Exception::class)
+    @Throws(IllegalStateException::class)
     private fun internalDisconnect(reason: CallEndReason, cancelScope: Boolean) {
         if (state is CallState.Disconnected) {
-            throw Exception("unavailable, call is DISCONNECTED.")
+            throw IllegalStateException("unavailable, call is DISCONNECTED.")
         }
 
         if (pjCall == null) {
