@@ -28,9 +28,8 @@ class CallConfig {
         this.busyEverywhereUse = busyEverywhereUse
     }
 
-
     // Transport config
-    var transport: TransportUse = TransportUse.UDP
+    var transport: TransportUse = TransportUse.TCP
 
     // Nat config
     var natMediaStunUse: MediaStunUse = MediaStunUse.DEFAULT
