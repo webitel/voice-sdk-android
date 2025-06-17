@@ -33,9 +33,9 @@ internal class SipManager {
         loadNativeLibraries()
         checkThread()
         if (isDestroying) {
-            quickDestroy()
+            forceRelease()
         }
-        val e = endpoint ?: createEndpoint(callConfig, sipConfig).also { endpoint = it }
+        val e = endpoint ?: createEndpoint(callConfig).also { endpoint = it }
         val a = account ?: createAccount(callConfig, sipConfig).also { account = it }
 
         val pjCall = PJCall(a, e, callbacks)
@@ -85,7 +85,7 @@ internal class SipManager {
     }
 
 
-    private fun createEndpoint(settings: CallConfig, config: SipConfig): PJEndpoint {
+    private fun createEndpoint(settings: CallConfig): PJEndpoint {
         val point = PJEndpoint()
         point.libCreate()
 
@@ -115,31 +115,6 @@ internal class SipManager {
         acc.create(accountConfig, true)
 
         return acc
-    }
-
-
-    private fun loadNativeLibraries() {
-        if (isLibraryLoaded) {
-            logger.debug("SipManager", "loadNativeLibraries: Libraries already loaded")
-            return
-        }
-        try {
-            System.loadLibrary("c++_shared")
-            System.loadLibrary("pjsua2")
-            isLibraryLoaded = true
-            logger.debug("SipManager", "loadNativeLibraries: c++_shared and pjsua2 loaded")
-        } catch (error: UnsatisfiedLinkError) {
-            isLibraryLoaded = false
-            logger.error("SipManager", "loadNativeLibraries: Error loading libraries - ${error}")
-        }
-    }
-
-
-    private fun quickDestroy() {
-        logger.debug("SipManager", "quickDestroy on called")
-        endpoint = null
-        account = null
-        isDestroying = false
     }
 
 
@@ -268,6 +243,31 @@ internal class SipManager {
         val tlsTransport = TransportConfig()
         tlsTransport.qosType = pj_qos_type.PJ_QOS_TYPE_VOICE
         point.transportCreate(pjsip_transport_type_e.PJSIP_TRANSPORT_TLS, tlsTransport)
+    }
+
+
+    private fun forceRelease() {
+        logger.debug("SipManager", "forceRelease called")
+        endpoint = null
+        account = null
+        isDestroying = false
+    }
+
+
+    private fun loadNativeLibraries() {
+        if (isLibraryLoaded) {
+            logger.debug("SipManager", "loadNativeLibraries: Libraries already loaded")
+            return
+        }
+        try {
+            System.loadLibrary("c++_shared")
+            System.loadLibrary("pjsua2")
+            isLibraryLoaded = true
+            logger.debug("SipManager", "loadNativeLibraries: c++_shared and pjsua2 loaded")
+        } catch (error: UnsatisfiedLinkError) {
+            isLibraryLoaded = false
+            logger.error("SipManager", "loadNativeLibraries: Error loading libraries - ${error}")
+        }
     }
 
 

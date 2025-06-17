@@ -90,7 +90,7 @@ val call = voiceClient.makeAudioCall(callListener)
 
 ### Call Controls
 
-The SDK provides asynchronous methods to manage active calls.
+The SDK provides methods to manage active calls.
 Each method returns a `Result<Unit>`, allowing you to handle success or failure via `onSuccess` / `onFailure`.
 
 #### Sending DTMF Tones
