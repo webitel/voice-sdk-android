@@ -34,7 +34,7 @@ data class CallEndReason(
 
 
 enum class CallEndReasonCode(
-    val sipCode: Int,
+    val code: Int,
     val message: String,
     val category: CallEndCategory
 ) {
@@ -80,9 +80,9 @@ enum class CallEndReasonCode(
 
     companion object {
         fun fromCode(code: Int, messageOverride: String? = null): CallEndReason {
-            val match = entries.find { it.sipCode == code }
+            val match = entries.find { it.code == code }
             return if (match != null) {
-                CallEndReason(match.sipCode, match.message, match.category)
+                CallEndReason(match.code, match.message, match.category)
             } else {
                 CallEndReason(
                     code,

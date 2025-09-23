@@ -54,7 +54,7 @@ afterEvaluate {
 
             groupId = "com.webitel"
             artifactId = "voice-sdk-android"
-            version = "0.1.1"
+            version = "0.1.3"
         }
     }
 }

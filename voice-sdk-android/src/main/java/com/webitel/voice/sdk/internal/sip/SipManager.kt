@@ -74,7 +74,9 @@ internal class SipManager {
             }
 
         } catch (ex: Exception) {
-            logger.error("SipManager", "shutdownStack: (full=$fullShutdown) failed: ${ex.message}")
+            logger.error("SipManager",
+                "shutdownStack: (full=$fullShutdown) failed: ${ex.message}"
+            )
         } finally {
             if (fullShutdown) {
                 endpoint = null
@@ -165,9 +167,10 @@ internal class SipManager {
         epConfig.medConfig.hasIoqueue = true
         epConfig.medConfig.clockRate = 16000
         epConfig.medConfig.quality = 10
-        epConfig.medConfig.ecOptions = 1
-        epConfig.medConfig.ecTailLen = 200
         epConfig.medConfig.threadCnt = 2
+        epConfig.medConfig.ecOptions = 0
+        epConfig.medConfig.ecTailLen = 0
+        epConfig.medConfig.noVad = true
 
         setLogConfig(epConfig)
 
@@ -263,10 +266,14 @@ internal class SipManager {
             System.loadLibrary("c++_shared")
             System.loadLibrary("pjsua2")
             isLibraryLoaded = true
-            logger.debug("SipManager", "loadNativeLibraries: c++_shared and pjsua2 loaded")
+            logger.debug("SipManager",
+                "loadNativeLibraries: c++_shared and pjsua2 loaded"
+            )
         } catch (error: UnsatisfiedLinkError) {
             isLibraryLoaded = false
-            logger.error("SipManager", "loadNativeLibraries: Error loading libraries - ${error}")
+            logger.error("SipManager",
+                "loadNativeLibraries: Error loading libraries - ${error}"
+            )
         }
     }
 

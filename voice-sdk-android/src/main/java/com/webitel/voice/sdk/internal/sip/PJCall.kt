@@ -84,6 +84,9 @@ internal class PJCall: Call {
                     val audDevManager: AudDevManager = endpoint.audDevManager()
                     audDevManager.captureDevMedia.startTransmit(am)
                     am.startTransmit(audDevManager.playbackDevMedia)
+
+                    am.adjustRxLevel(1.3f)
+                    am.adjustTxLevel(1.3f)
                 } catch (e: Exception) {
                     logger.error("PJCall","onCallMediaState: ${e.message}")
                 }
