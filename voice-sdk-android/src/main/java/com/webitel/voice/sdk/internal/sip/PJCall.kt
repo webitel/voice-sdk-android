@@ -1,17 +1,20 @@
 package com.webitel.voice.sdk.internal.sip
 
-import com.webitel.voice.sdk.CallConfig
 import com.webitel.voice.sdk.internal.voice.WebitelVoiceClient.Companion.logger
 import org.pjsip.pjsua2.AudDevManager
 import org.pjsip.pjsua2.AudioMedia
 import org.pjsip.pjsua2.Call
 import org.pjsip.pjsua2.CallInfo
+import org.pjsip.pjsua2.CallMediaInfo
 import org.pjsip.pjsua2.CallOpParam
+import org.pjsip.pjsua2.OnCallMediaEventParam
 import org.pjsip.pjsua2.OnCallMediaStateParam
 import org.pjsip.pjsua2.OnCallStateParam
+import org.pjsip.pjsua2.pjmedia_dir
 import org.pjsip.pjsua2.pjmedia_type
 import org.pjsip.pjsua2.pjsip_inv_state
 import org.pjsip.pjsua2.pjsip_status_code
+import org.pjsip.pjsua2.pjsua2
 import org.pjsip.pjsua2.pjsua_call_flag
 import org.pjsip.pjsua2.pjsua_call_media_status
 
@@ -40,69 +43,163 @@ internal class PJCall: Call {
 
     override fun onCallState(prm: OnCallStateParam?) {
         super.onCallState(prm)
-        event.onCallStatePJSIP(info.state, info.lastStatusCode, info.lastReason)
+        withInfo { ci -> event.onCallStatePJSIP(ci.state, ci.lastStatusCode, ci.lastReason) }
     }
 
 
     override fun onCallMediaState(prm: OnCallMediaStateParam?) {
         val ci = try {
             info
-        } catch (e: java.lang.Exception) {
+        } catch (e: Exception) {
+            logger.error("PJCall", "onCallMediaState: ${e.message}")
             return
         }
 
-        val cmiv = ci.media
+        try {
+            logger.debug("PJCall", "media count = ${ci.media.size}")
 
-        for (i in cmiv.indices) {
-            val cmi = cmiv[i]
-            if (cmi.type == pjmedia_type.PJMEDIA_TYPE_AUDIO &&
-                cmi.status ==
-                pjsua_call_media_status.PJSUA_CALL_MEDIA_LOCAL_HOLD
-            ) {
+            val audDevManager = try {
+                endpoint.audDevManager()
+            } catch (e: Exception) {
+                logger.error("PJCall", "audDevManager error: ${e.message}")
+                return
+            }
+
+            ci.media.forEachIndexed { index, media ->
+                logger.debug(
+                    "PJCall",
+                    "media[$index] type=${media.type} status=${media.status} " +
+                            "dir=${media.dir} incomingWindow=${media.videoIncomingWindowId}"
+                )
+                when (media.type) {
+                    pjmedia_type.PJMEDIA_TYPE_AUDIO -> handleAudioMedia(
+                        media = media,
+                        mediaIndex = index,
+                        audDevManager = audDevManager
+                    )
+                    pjmedia_type.PJMEDIA_TYPE_VIDEO -> handleVideoMedia(media)
+                    else -> Unit
+                }
+            }
+
+            if (isOnMute) {
+                try {
+                    setMute(true)
+                } catch (e: Exception) {
+                    logger.error("PJCall", "mute restore error: ${e.stackTraceToString()}")
+                }
+            }
+        } finally {
+            try { ci.delete() } catch (_: Exception) {}
+        }
+    }
+
+    private fun handleAudioMedia(
+        media: CallMediaInfo,
+        mediaIndex: Int,
+        audDevManager: AudDevManager
+    ) {
+        when (media.status) {
+            pjsua_call_media_status.PJSUA_CALL_MEDIA_LOCAL_HOLD -> {
                 isHoldInProgress = false
                 event.onHoldCallPJSIP(true)
-            } else if (cmi.type == pjmedia_type.PJMEDIA_TYPE_AUDIO &&
-                cmi.status ==
-                pjsua_call_media_status.PJSUA_CALL_MEDIA_ACTIVE
-            ) {
+                return
+            }
+
+            pjsua_call_media_status.PJSUA_CALL_MEDIA_ACTIVE -> {
                 isHoldInProgress = false
                 event.onHoldCallPJSIP(false)
             }
+            else -> Unit
         }
-        for (i in cmiv.indices) {
-            val cmi = cmiv[i]
-            if (cmi.type == pjmedia_type.PJMEDIA_TYPE_AUDIO &&
-                (cmi.status == pjsua_call_media_status.PJSUA_CALL_MEDIA_ACTIVE
-                        || cmi.status == pjsua_call_media_status.PJSUA_CALL_MEDIA_REMOTE_HOLD)
-            ) {
 
-                val m = getMedia(i.toLong())
-                val am = AudioMedia.typecastFromMedia(m)
+        if (media.status != pjsua_call_media_status.PJSUA_CALL_MEDIA_ACTIVE &&
+            media.status != pjsua_call_media_status.PJSUA_CALL_MEDIA_REMOTE_HOLD
+        ) {
+            return
+        }
 
-                // connect ports
-                try {
-                    val audDevManager: AudDevManager = endpoint.audDevManager()
-                    audDevManager.captureDevMedia.startTransmit(am)
-                    am.startTransmit(audDevManager.playbackDevMedia)
+        try {
+            val audioMedia = AudioMedia.typecastFromMedia(
+                getMedia(mediaIndex.toLong())
+            )
+            audDevManager.captureDevMedia.startTransmit(audioMedia)
+            audioMedia.startTransmit(audDevManager.playbackDevMedia)
+            audioMedia.adjustRxLevel(1.3f)
+            audioMedia.adjustTxLevel(1.3f)
+            logger.debug(
+                "PJCall",
+                "audio media connected [$mediaIndex]"
+            )
+        } catch (e: Exception) {
+            logger.error(
+                "PJCall",
+                "audio media error: ${e.stackTraceToString()}"
+            )
+        }
+    }
 
-                    am.adjustRxLevel(1.3f)
-                    am.adjustTxLevel(1.3f)
-                } catch (e: Exception) {
-                    logger.error("PJCall","onCallMediaState: ${e.message}")
+    private fun handleVideoMedia(media: CallMediaInfo) {
+        when (media.status) {
+            pjsua_call_media_status.PJSUA_CALL_MEDIA_ACTIVE -> {
+                val isEncoding = (media.dir and pjmedia_dir.PJMEDIA_DIR_ENCODING) != 0
+                val isDecoding = (media.dir and pjmedia_dir.PJMEDIA_DIR_DECODING) != 0
+
+                if (isEncoding) {
+                    logger.debug("PJCall", "onCallMediaState: SHOW_LOCAL_VIDEO")
+                    event.onShowLocalVideo(media)
+                } else {
+                    event.onLocalVideoStopped()
+                }
+
+                if (isDecoding && media.videoIncomingWindowId != pjsua2.INVALID_ID) {
+                    logger.debug(
+                        "PJCall",
+                        "onCallMediaState: SHOW_REMOTE_VIDEO incomingWindow=${media.videoIncomingWindowId}"
+                    )
+                    event.onShowRemoteVideo(media)
+                } else {
+                    event.onRemoteVideoStopped()
                 }
             }
-        }
 
-        if (isOnMute) {
-            try {
-                setMute(true)
-            } catch (e: Exception) {
-                val stackTrace = e.stackTraceToString()
-                logger.error(
-                    "PJCall",
-                    "onCallMediaState: error while connecting audio media to sound device\n$stackTrace"
-                )
+            pjsua_call_media_status.PJSUA_CALL_MEDIA_LOCAL_HOLD,
+            pjsua_call_media_status.PJSUA_CALL_MEDIA_REMOTE_HOLD -> {
+                // Hold only flips the SDP media direction to sendonly/inactive — the local
+                // camera capture/preview is independent of that and keeps running untouched.
+                // Only the remote render is hidden, since frames genuinely stop arriving.
+                event.onRemoteVideoStopped()
             }
+
+            else -> {
+                // Media genuinely gone (removed from SDP, error, etc.) — tear down both.
+                event.onLocalVideoStopped()
+                event.onRemoteVideoStopped()
+            }
+        }
+    }
+
+
+    override fun onCallMediaEvent(prm: OnCallMediaEventParam) {
+        logger.debug("PJCall", "onCallMediaEvent type=${prm.ev.type} medIdx=${prm.medIdx}")
+        // Only respond to PJMEDIA_EVENT_FMT_CHANGED (1212370246).
+        // KEYFRAME_FOUND (1297237577) and stream-state events fire BEFORE PJSIP resizes
+        // its decode buffer — calling vw.setWindow() then causes a premature reinit.
+        // FMT_CHANGED fires AFTER buffer resize; vw.setWindow() triggers a renderer
+        // restart that causes PJSIP to request a new keyframe (via RTCP PLI / SIP INFO),
+        // which resumes video at the new resolution after hold/unhold.
+        if (prm.ev.type != 1212370246) return
+        val ci = try { info } catch (e: Exception) { return }
+        try {
+            val medIdx = prm.medIdx.toInt()
+            if (medIdx < 0 || medIdx >= ci.media.size) return
+            val cmi = ci.media[medIdx]
+            if (cmi.type != pjmedia_type.PJMEDIA_TYPE_VIDEO ||
+                cmi.status != pjsua_call_media_status.PJSUA_CALL_MEDIA_ACTIVE ||
+                cmi.videoIncomingWindowId == pjsua2.INVALID_ID) return
+            event.onRemoteVideoFormatChanged()
+        } finally {
+            try { ci.delete() } catch (_: Exception) {}
         }
     }
 
@@ -110,30 +207,33 @@ internal class PJCall: Call {
     @Throws(IllegalStateException::class)
     fun setMute(mute: Boolean) {
         checkThread()
-        val info: CallInfo = info
+        val ci: CallInfo = info
         var processed = false
+        try {
+            for (i in ci.media.indices) {
+                val media = getMedia(i.toLong())
+                val mediaInfo = ci.media[i]
 
-        for (i in info.media.indices) {
-            val media = getMedia(i.toLong())
-            val mediaInfo = info.media[i]
+                if (
+                    mediaInfo.type == pjmedia_type.PJMEDIA_TYPE_AUDIO &&
+                    media != null &&
+                    mediaInfo.status == pjsua_call_media_status.PJSUA_CALL_MEDIA_ACTIVE
+                ) {
+                    processed = true
+                    val audioMedia = AudioMedia.typecastFromMedia(media)
+                    val mgr = endpoint.audDevManager()
 
-            if (
-                mediaInfo.type == pjmedia_type.PJMEDIA_TYPE_AUDIO &&
-                media != null &&
-                mediaInfo.status == pjsua_call_media_status.PJSUA_CALL_MEDIA_ACTIVE
-            ) {
-                processed = true
-                val audioMedia = AudioMedia.typecastFromMedia(media)
-                val mgr = endpoint.audDevManager()
-
-                isOnMute = if (mute) {
-                    mgr.captureDevMedia.stopTransmit(audioMedia)
-                    true
-                } else {
-                    mgr.captureDevMedia.startTransmit(audioMedia)
-                    false
+                    isOnMute = if (mute) {
+                        mgr.captureDevMedia.stopTransmit(audioMedia)
+                        true
+                    } else {
+                        mgr.captureDevMedia.startTransmit(audioMedia)
+                        false
+                    }
                 }
             }
+        } finally {
+            try { ci.delete() } catch (_: Exception) {}
         }
 
         if (!processed) {
@@ -143,49 +243,72 @@ internal class PJCall: Call {
 
 
     @Throws(Exception::class)
-    fun transferTo(number: String, name: String) {
-        val suffix = when (account.transportUse) {
-            CallConfig.TransportUse.TCP -> ";transport=tcp"
-            CallConfig.TransportUse.TLS -> ";transport=tls"
-            else -> ""
-        }
-        val uri = account.config.getSipUri(number, name, suffix)
-        transferTo(uri)
-    }
-
-
-    @Throws(Exception::class)
-    fun setHold() {
+    fun setHold(videoCount: Long) {
         if (isHoldInProgress) {
             throw java.lang.Exception("Hold/unhold operation already in progress.")
         }
         checkThread()
-        if(info.state != pjsip_inv_state.PJSIP_INV_STATE_CONFIRMED) {
-            throw java.lang.Exception("invalid state - ${info.state}")
+        val callState = withInfo { it.state }
+        if (callState != pjsip_inv_state.PJSIP_INV_STATE_CONFIRMED) {
+            throw java.lang.Exception("invalid state - $callState")
         }
         isHoldInProgress = true
 
         val param = CallOpParam(true)
-        setHold(param)
+        try {
+            param.opt.audioCount = 1
+            param.opt.videoCount = videoCount
+            setHold(param)
+        } finally {
+            try { param.delete() } catch (_: Exception) {}
+        }
     }
 
 
     @Throws(Exception::class)
-    fun setUnHold() {
+    fun setUnHold(videoCount: Long) {
         if (isHoldInProgress) {
             throw java.lang.Exception("Hold/unhold operation already in progress.")
         }
         checkThread()
-        if(info.state != pjsip_inv_state.PJSIP_INV_STATE_CONFIRMED) {
-            throw java.lang.Exception("invalid state - ${info.state}")
+        val callState = withInfo { it.state }
+        if (callState != pjsip_inv_state.PJSIP_INV_STATE_CONFIRMED) {
+            throw java.lang.Exception("invalid state - $callState")
         }
         isHoldInProgress = true
 
         val param = CallOpParam(true)
-        param.opt.audioCount = pjsua_call_flag.PJSUA_CALL_UNHOLD.toLong()
-        param.opt.flag = pjsua_call_flag.PJSUA_CALL_UNHOLD.toLong()
+        try {
+            param.opt.audioCount = 1
+            param.opt.flag = pjsua_call_flag.PJSUA_CALL_UNHOLD.toLong()
+            param.opt.videoCount = videoCount
+            reinvite(param)
+        } finally {
+            try { param.delete() } catch (_: Exception) {}
+        }
+    }
 
-        reinvite(param)
+
+    /**
+     * Sends a SIP re-INVITE to add or remove the video stream mid-call.
+     *
+     * @param videoCount 1 to add video, 0 to remove it.
+     */
+    @Throws(Exception::class)
+    fun reinviteWithVideoCount(videoCount: Long) {
+        checkThread()
+        val callState = withInfo { it.state }
+        if (callState != pjsip_inv_state.PJSIP_INV_STATE_CONFIRMED) {
+            throw java.lang.Exception("reinviteWithVideoCount failed: invalid state - $callState")
+        }
+        val param = CallOpParam(true)
+        try {
+            param.opt.audioCount = 1
+            param.opt.videoCount = videoCount
+            reinvite(param)
+        } finally {
+            try { param.delete() } catch (_: Exception) {}
+        }
     }
 
 
@@ -193,27 +316,42 @@ internal class PJCall: Call {
     fun hangup(code: Int) {
         checkThread()
         val param = CallOpParam(true)
-        param.statusCode = code
-        hangup(param)
-        delete()
+        try {
+            param.statusCode = code
+            hangup(param)
+        } finally {
+            try { param.delete() } catch (_: Exception) {}
+        }
+        // Do NOT delete() this SWIG wrapper here — the async BYE triggers PJSIP's own
+        // PJSIP_INV_STATE_DISCONNECTED callback shortly after, and deleting the wrapper
+        // before that callback races PJSIP's internal call-slot reuse (SIGSEGV). The
+        // DISCONNECTED handler drops the Kotlin-side reference and lets it be garbage
+        // collected once the whole native stack is torn down.
     }
 
 
     @Throws(Exception::class)
     fun answer() {
         val param = CallOpParam(true)
-        param.statusCode = pjsip_status_code.PJSIP_SC_OK
-        param.opt.audioCount = 1
-        param.opt.videoCount = 0
-
-        answer(param)
+        try {
+            param.statusCode = pjsip_status_code.PJSIP_SC_OK
+            param.opt.audioCount = 1
+            param.opt.videoCount = 0
+            answer(param)
+        } finally {
+            try { param.delete() } catch (_: Exception) {}
+        }
     }
 
 
     @Throws(Exception::class)
     private fun transferTo(destination: String) {
         val param = CallOpParam(true)
-        xfer(destination, param)
+        try {
+            xfer(destination, param)
+        } finally {
+            try { param.delete() } catch (_: Exception) {}
+        }
     }
 
 
@@ -221,6 +359,21 @@ internal class PJCall: Call {
     fun sendDtmf(value: String) {
         checkThread()
         dialDtmf(value)
+    }
+
+
+    /**
+     * Executes [block] with a fresh [CallInfo] snapshot and deletes it on exit.
+     * Prevents SWIG-owned CallInfo objects from being finalized by FinalizerDaemon,
+     * which would call pj_thread_this() on an unregistered thread → SIGABRT.
+     */
+    private inline fun <T> withInfo(block: (CallInfo) -> T): T {
+        val ci = info
+        return try {
+            block(ci)
+        } finally {
+            try { ci.delete() } catch (_: Exception) {}
+        }
     }
 
 

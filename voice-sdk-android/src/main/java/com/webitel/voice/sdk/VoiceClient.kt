@@ -37,7 +37,7 @@ interface VoiceClient {
      * @param listener A listener to observe call state and events.
      * @return A new Call instance representing the initiated audio call.
      */
-    fun makeAudioCall(listener: CallListener): Call
+    fun makeCall(options: CallOptions = CallOptions(), listener: CallListener): Call
 
 
     /**
@@ -48,40 +48,13 @@ interface VoiceClient {
      * @param listener A listener to observe call state and events.
      * @return A new Call instance representing the initiated audio call.
      */
-    fun makeAudioCall(jwt: String, listener: CallListener): Call
-
-
-//    /**
-//     * Initiates an outgoing video call using the specified surfaces for local and remote video streams.
-//     *
-//     * @param localSurface The [Surface] where the local camera preview will be rendered.
-//     *                     This is typically attached to a [SurfaceView] or [TextureView] in the UI.
-//     *
-//     * @param remoteSurface The [Surface] where the remote video stream will be displayed.
-//     *                      This should be connected to a visible UI element capable of rendering video.
-//     *
-//     * @param config Optional [VideoCallConfig] to customize call behavior such as resolution,
-//     *               codec preferences, bitrate limits, etc. Defaults to standard values.
-//     *
-//     * This function assumes the PJSIP video subsystem is already initialized and media transport
-//     * is ready. It sets up video media for both sending and receiving streams.
-//     */
-//    fun makeVideoCall(
-//        localSurface: Surface,
-//        remoteSurface: Surface,
-//        config: VideoCallConfig = VideoCallConfig()
-//    )
-
-//    /**
-//     * Sets client configuration such as audio/video codecs, NAT traversal, etc.
-//     */
-//    fun setConfig(config: CallConfig)
+    fun makeCall(jwt: String, options: CallOptions = CallOptions(), listener: CallListener): Call
 
 
     /**
-     * Terminates all active calls, deletes the SIP account, and fully shuts down the SIP stack.
+     * Terminates all active calls and fully shuts down the internal call session.
      *
-     * Call this method if you want to completely reset the internal SIP state, for example,
+     * Call this method if you want to completely reset the internal session state, for example,
      * to reinitialize with different credentials or configuration.
      *
      * If the credentials remain the same, the SDK will automatically reinitialize itself
@@ -96,7 +69,7 @@ interface VoiceClient {
      * Builder for configuring and creating an instance of VoiceClient.
      *
      * @property application Application context
-     * @property address Server address (e.g., SIP or WebSocket endpoint)
+     * @property address Server address of the voice service
      * @property token Access token for authentication
      */
     data class Builder(
@@ -107,8 +80,7 @@ interface VoiceClient {
         internal var user: User? = null
         internal var logLevel: LogLevel = LogLevel.ERROR
         internal var deviceId: String = ""
-        internal var ver: String = "0.0.0"
-        internal var name: String = ""
+        internal var callSettings: CallSettings = CallSettings()
 
         /**
          * Assigns the user information that will be used for authentication purposes.
@@ -132,27 +104,23 @@ interface VoiceClient {
 
 
         /**
-         * Sets the Android application display name.
-         * @param name The display name of the application.
-         * @return The Builder instance for method chaining.
-         */
-        fun appName(name: String) = apply { this.name = name }
-
-
-        /**
-         * Sets the Android application version.
-         * @param version The version of the application.
-         * @return The Builder instance for method chaining.
-         */
-        fun appVersion(version: String) = apply { this.ver = version }
-
-
-        /**
          * Sets the device ID for the client.
          * @param value The device ID.
          * @return The Builder instance for method chaining.
          */
         fun deviceId(value: String) = apply { this.deviceId = value }
+
+
+        /**
+         * Overrides the default network/transport configuration.
+         *
+         * If not called, the SDK uses [CallSettings] defaults (TCP transport,
+         * ICE disabled, SRTP disabled).
+         *
+         * @param settings A configured [CallSettings] instance.
+         * @return The Builder instance for method chaining.
+         */
+        fun callSettings(settings: CallSettings) = apply { this.callSettings = settings }
 
 
         /**

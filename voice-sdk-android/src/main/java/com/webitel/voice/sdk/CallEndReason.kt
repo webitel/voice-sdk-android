@@ -33,7 +33,7 @@ data class CallEndReason(
 )
 
 
-enum class CallEndReasonCode(
+internal enum class CallEndReasonCode(
     val code: Int,
     val message: String,
     val category: CallEndCategory

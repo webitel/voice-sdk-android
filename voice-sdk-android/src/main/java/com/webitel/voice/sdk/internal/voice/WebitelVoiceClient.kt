@@ -1,20 +1,25 @@
 package com.webitel.voice.sdk.internal.voice
 
+import android.content.Context.CAMERA_SERVICE
+import android.hardware.camera2.CameraManager
+import android.media.AudioManager
 import com.webitel.voice.sdk.Call
 import com.webitel.voice.sdk.CallEndReasonCode.Companion.fromCode
 import com.webitel.voice.sdk.CallListener
+import com.webitel.voice.sdk.CallOptions
 import com.webitel.voice.sdk.CallState
 import com.webitel.voice.sdk.User
 import com.webitel.voice.sdk.VoiceClient
 import com.webitel.voice.sdk.internal.auth.AuthManager
 import com.webitel.voice.sdk.internal.repository.DeviceInfoRepository
 import com.webitel.voice.sdk.internal.repository.storage.DeviceInfoStorageSharedPref
+import org.pjsip.PjCameraInfo2
 
 
 internal class WebitelVoiceClient(private val client: VoiceClient.Builder): VoiceClient {
     private val authManager: AuthManager
-    private val voiceManager = VoiceManager()
     private val deviceInfoRepository = DeviceInfoRepository(
+        client.application,
         DeviceInfoStorageSharedPref(
             client.application
         )
@@ -22,7 +27,7 @@ internal class WebitelVoiceClient(private val client: VoiceClient.Builder): Voic
 
     override val activeCall: Call?
         get() {
-            return voiceManager.activeCall
+            return VoiceManager.activeCall
         }
 
     companion object {
@@ -31,6 +36,7 @@ internal class WebitelVoiceClient(private val client: VoiceClient.Builder): Voic
 
     init {
         logger.level = client.logLevel
+        VoiceManager.configure(client.callSettings)
 
         val deviceId = client.deviceId.ifEmpty {
             deviceInfoRepository.getDeviceId()
@@ -47,9 +53,8 @@ internal class WebitelVoiceClient(private val client: VoiceClient.Builder): Voic
         client.user?.let {
             authManager.setUser(it)
         }
-
-        // val cm = application.getSystemService(AppCompatActivity.CAMERA_SERVICE) as CameraManager
-        // PjCameraInfo2.SetCameraManager(cm)
+         val cm = client.application.getSystemService(CAMERA_SERVICE) as CameraManager
+         PjCameraInfo2.SetCameraManager(cm)
     }
 
 
@@ -63,7 +68,10 @@ internal class WebitelVoiceClient(private val client: VoiceClient.Builder): Voic
     }
 
 
-    override fun makeAudioCall(listener: CallListener): Call {
+    override fun makeCall(
+        options: CallOptions,
+        listener: CallListener
+    ): Call {
         activeCall?.takeIf { it.state !is CallState.Disconnected }?.let { existingCall ->
             logger.warn("WebitelVoiceClient",
                 "makeAudioCall: Active call already exists in state: ${existingCall.state}"
@@ -72,30 +80,44 @@ internal class WebitelVoiceClient(private val client: VoiceClient.Builder): Voic
             return existingCall
         }
 
-        val voice = WebitelCall(voiceManager).apply {
+        val audioManager = client.application.getSystemService(AudioManager::class.java)
+        audioManager.mode = AudioManager.MODE_IN_COMMUNICATION
+
+        val voice = WebitelCall(VoiceManager, options).apply {
             addListener(listener)
+            addListener(object : CallListener {
+                override fun onCallStateChanged(call: Call, state: CallState) {
+                    if (state is CallState.Disconnected) {
+                        audioManager.mode = AudioManager.MODE_NORMAL
+                    }
+                }
+            })
         }
-        voiceManager.activeCall = voice
+        VoiceManager.activeCall = voice
 
         voice.launchInScope {
-            handleSipConfig(voice)
+            handleSipConfig(options, voice)
         }
 
         return voice
     }
 
 
-    override fun makeAudioCall(jwt: String, listener: CallListener): Call {
+    override fun makeCall(
+        jwt: String,
+        options: CallOptions,
+        listener: CallListener
+    ): Call {
         setUserJWT(jwt)
-        return makeAudioCall(listener)
+        return makeCall(options, listener)
     }
 
 
-    private suspend fun handleSipConfig(call: WebitelCall) {
-        authManager.getSipConfig()
+    private suspend fun handleSipConfig(callOptions: CallOptions, call: WebitelCall) {
+        authManager.getSipConfig(callOptions.meetingId)
             .onSuccess { sip ->
                 logger.debug("WebitelVoiceClient", "makeAudioCall: call to Service...")
-                voiceManager.makeAudioCall(call, sip)
+                VoiceManager.makeCall(callOptions, call, sip)
             }
             .onFailure { error ->
                 handleCallFailure(call, error)
@@ -114,21 +136,13 @@ internal class WebitelVoiceClient(private val client: VoiceClient.Builder): Voic
 
 
     override fun shutdown(onComplete: () -> Unit) {
-        voiceManager.shutdown {
+        VoiceManager.shutdown {
             onComplete()
         }
     }
 
 
     private fun getUserAgent(): String {
-        val appName: String = client.name.ifEmpty {
-            client.application.packageName
-        }
-        val version: String = client.ver
-
-        return deviceInfoRepository.getUserAgent(
-            appName = appName,
-            appVersion = version
-        )
+        return deviceInfoRepository.getUserAgent()
     }
 }

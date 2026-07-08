@@ -12,6 +12,8 @@ internal data class TokenRequest(
     @SerializedName("response_type")
     val responseType: List<String>,
     val identity: Identity,
+    @SerializedName("meeting_id")
+    val meetingId: String?,
     val code: String
 )
 

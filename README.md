@@ -126,4 +126,12 @@ call.disconnect()
 ```
 
 
-For more information see the full documentation. 🚀
+## Documentation
+
+- [Initialization](docs/initialization.md)
+- [Authentication](docs/authentication.md)
+- [Calls](docs/calls.md)
+- [Video](docs/video.md)
+- [Call State](docs/call-state.md)
+- [Events](docs/events.md)
+- [Session](docs/session.md)

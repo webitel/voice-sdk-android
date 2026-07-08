@@ -24,17 +24,26 @@ android {
             )
         }
     }
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_1_8
         targetCompatibility = JavaVersion.VERSION_1_8
     }
+
+    buildFeatures {
+        buildConfig = true
+    }
+
+    defaultConfig {
+        buildConfigField("String", "VERSION_NAME", "\"${getGitVersion()}\"")
+    }
+
     kotlinOptions {
         jvmTarget = "1.8"
     }
 }
 
 dependencies {
-
     implementation("androidx.core:core-ktx:1.8.0")
     implementation("androidx.appcompat:appcompat:1.7.0")
     implementation("com.google.android.material:material:1.12.0")
@@ -54,7 +63,18 @@ afterEvaluate {
 
             groupId = "com.webitel"
             artifactId = "voice-sdk-android"
-            version = "0.1.3"
+            version = "0.2.1"
         }
+    }
+}
+
+fun getGitVersion(): String {
+    return try {
+        val process = ProcessBuilder("git", "describe", "--tags", "--abbrev=0")
+            .redirectError(ProcessBuilder.Redirect.PIPE)
+            .start()
+        process.inputStream.bufferedReader().readText().trim()
+    } catch (e: Exception) {
+        "unknown"
     }
 }

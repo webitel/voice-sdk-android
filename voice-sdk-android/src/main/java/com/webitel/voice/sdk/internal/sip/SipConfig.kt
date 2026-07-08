@@ -67,9 +67,9 @@ import com.google.gson.annotations.SerializedName
     }
 
 
-    fun getSipUri(number:String, name: String, suffix: String = ""):String{
+    fun getSipUri(number:String, name: String): String {
         val x = proxy?.replace("sip:", "")
-        return "\"$name\"<sip:$number@$x$suffix>"
+        return "\"$name\"<sip:$number@$x>"
     }
 
 

@@ -1,6 +1,5 @@
 package com.webitel.voice.sdk.internal.sip
 
-import com.webitel.voice.sdk.CallConfig
 import com.webitel.voice.sdk.internal.voice.WebitelVoiceClient.Companion.logger
 import org.pjsip.pjsua2.Account
 import org.pjsip.pjsua2.OnIncomingCallParam
@@ -9,7 +8,6 @@ import java.lang.Exception
 
 
 internal class PJAccount(
-    val transportUse: CallConfig.TransportUse,
     val config: SipConfig
 ): Account() {
 

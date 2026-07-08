@@ -25,12 +25,14 @@ internal class AuthManager(
     private val userAgent: String,
     private val clientToken: String
 ) {
+    @Volatile
     private var jwt: String = ""
+    @Volatile
     private var user: User? = null
 
 
-    suspend fun getSipConfig(): Result<SipConfig> {
-        user?.let { return fetchSipConfigWithUser(it) }
+    suspend fun getSipConfig(meetingId: String?): Result<SipConfig> {
+        user?.let { return fetchSipConfigWithUser(it, meetingId) }
 
         return if (jwt.isNotEmpty()) {
             fetchSipConfigWithJwt()
@@ -50,9 +52,9 @@ internal class AuthManager(
     }
 
 
-    private suspend fun fetchSipConfigWithUser(user: User): Result<SipConfig> {
+    private suspend fun fetchSipConfigWithUser(user: User, meetingId: String?): Result<SipConfig> {
         logger.debug("AuthManager",
-            "fetchSipConfigWithUser: sub - ${user.sub}; name - ${user.name}"
+            "fetchSipConfigWithUser: sub - ${user.sub}; name - ${user.name}; meetingId - $meetingId"
         )
         val request = TokenRequest(
             scope = listOf("call"),
@@ -64,11 +66,12 @@ internal class AuthManager(
                 sub = user.sub,
                 name = user.name
             ),
+            meetingId = meetingId,
             code = "authorization_code"
         )
 
-        val api = createApi()
         return try {
+            val api = createApi()
             val response = api.userLogin(request)
             processSipResponse(response)
         }catch (e: Exception) {
