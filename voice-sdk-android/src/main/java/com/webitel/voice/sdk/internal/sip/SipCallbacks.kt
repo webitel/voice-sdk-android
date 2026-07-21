@@ -9,7 +9,7 @@ internal interface SipCallCallbacks {
 
     fun onShowRemoteVideo(cmi: CallMediaInfo)
     fun onShowLocalVideo(cmi: CallMediaInfo)
-    fun onRemoteVideoFormatChanged()
+    fun onRemoteVideoFormatChanged(width: Int, height: Int)
 
     /** Fired when local video encoding stops (media becomes inactive or direction loses encoding). */
     fun onLocalVideoStopped()

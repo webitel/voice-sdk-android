@@ -37,4 +37,12 @@ sealed class CallEvent {
         val callId: String,
         val state: VideoState
     ) : CallEvent()
+
+    /** The real pixel dimensions of a video stream changed (local capture or remote decode). */
+    data class VideoSizeChanged(
+        val callId: String,
+        val isLocal: Boolean,
+        val width: Int,
+        val height: Int
+    ) : CallEvent()
 }

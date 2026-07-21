@@ -288,6 +288,13 @@ internal class WebitelCall(
                 logger.debug("WCall",
                     "switchCamera: ${if (isFrontActive) "BACK" else "FRONT"} (id=$nextCameraId)"
                 )
+                try {
+                    videoPreview?.videoWindow?.info?.size?.let { size ->
+                        fireVideoSizeChanged(isLocal = true, width = size.w.toInt(), height = size.h.toInt())
+                    }
+                } catch (e: Exception) {
+                    logger.error("WCall", "switchCamera: failed reading new camera size: ${e.message}")
+                }
             } catch (e: Exception) {
                 logger.error("WCall", "switchCamera: ${e.stackTraceToString()}")
             } finally {
@@ -610,8 +617,8 @@ internal class WebitelCall(
     }
 
 
-    override fun onRemoteVideoFormatChanged() {
-        logger.debug("WCall", "onRemoteVideoFormatChanged")
+    override fun onRemoteVideoFormatChanged(width: Int, height: Int) {
+        logger.debug("WCall", "onRemoteVideoFormatChanged: event size=${width}x${height}")
         formatChangedJob?.cancel()
         formatChangedJob = scope.launch {
             kotlinx.coroutines.delay(300)
@@ -638,6 +645,22 @@ internal class WebitelCall(
                 if (!isRemoteVideoActive) {
                     isRemoteVideoActive = true
                     fireVideoStateChanged()
+                }
+                // DIAGNOSTIC: compares the render window's actual size against the event's
+                // reported size — if the window is always square regardless of event size,
+                // SipManager's forced-square decFmt (applyVideoQualitySafe) is distorting the
+                // frame before it reaches this window, and needs its own separate fix.
+                try {
+                    val winSize = VideoWindow(winId).info.size
+                    logger.debug("WCall",
+                        "onRemoteVideoFormatChanged: render window size=${winSize.w}x${winSize.h} " +
+                        "vs event size=${width}x${height}"
+                    )
+                } catch (e: Exception) {
+                    logger.error("WCall", "onRemoteVideoFormatChanged: failed reading window size: ${e.message}")
+                }
+                if (width > 0 && height > 0) {
+                    fireVideoSizeChanged(isLocal = false, width = width, height = height)
                 }
             } catch (e: Exception) {
                 logger.error("WCall", "onRemoteVideoFormatChanged: ${e.message}")
@@ -697,6 +720,13 @@ internal class WebitelCall(
 
                 localHandler.setVideoWindow(vp.videoWindow)
                 localHandler.attach(localSurface)
+
+                try {
+                    val size = vp.videoWindow.info.size
+                    fireVideoSizeChanged(isLocal = true, width = size.w.toInt(), height = size.h.toInt())
+                } catch (e: Exception) {
+                    logger.error("WCall", "onShowLocalVideo: failed reading local window size: ${e.message}")
+                }
             }
 
             logger.debug("WCall",
@@ -983,6 +1013,16 @@ internal class WebitelCall(
         listeners.forEach {
             safeListenerCall { it.onCallEvent(event) }
             safeListenerCall { it.onVideoStateChanged(this, state) }
+        }
+    }
+
+
+    private fun fireVideoSizeChanged(isLocal: Boolean, width: Int, height: Int) {
+        logger.debug("WCall", "fireVideoSizeChanged: isLocal=$isLocal ${width}x${height}")
+        val event = CallEvent.VideoSizeChanged(id, isLocal, width, height)
+        listeners.forEach {
+            safeListenerCall { it.onCallEvent(event) }
+            safeListenerCall { it.onVideoSizeChanged(this, isLocal, width, height) }
         }
     }
 

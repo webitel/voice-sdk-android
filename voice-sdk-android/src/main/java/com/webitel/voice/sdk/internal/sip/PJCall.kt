@@ -196,7 +196,10 @@ internal class PJCall: Call {
             if (cmi.type != pjmedia_type.PJMEDIA_TYPE_VIDEO ||
                 cmi.status != pjsua_call_media_status.PJSUA_CALL_MEDIA_ACTIVE ||
                 cmi.videoIncomingWindowId == pjsua2.INVALID_ID) return
-            event.onRemoteVideoFormatChanged()
+            val fmtChanged = prm.ev.data.fmtChanged
+            val width = fmtChanged?.newWidth?.toInt() ?: 0
+            val height = fmtChanged?.newHeight?.toInt() ?: 0
+            event.onRemoteVideoFormatChanged(width, height)
         } finally {
             try { ci.delete() } catch (_: Exception) {}
         }

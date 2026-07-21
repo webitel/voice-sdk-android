@@ -76,4 +76,19 @@ interface CallListener {
      * @param state the new [VideoState] describing which streams are active
      */
     fun onVideoStateChanged(call: Call, state: VideoState) {}
+
+
+    /**
+     * Called when the real pixel dimensions of a video stream become known or change.
+     *
+     * Fires for local camera capture (after preview starts, and again after [Call.switchCamera]
+     * if the new camera's native resolution differs) and for remote decoded video (whenever
+     * PJSIP reports PJMEDIA_EVENT_FMT_CHANGED with new dimensions).
+     *
+     * @param call    the affected call
+     * @param isLocal true for the local camera preview, false for the remote decoded stream
+     * @param width   real pixel width of the stream
+     * @param height  real pixel height of the stream
+     */
+    fun onVideoSizeChanged(call: Call, isLocal: Boolean, width: Int, height: Int) {}
 }
