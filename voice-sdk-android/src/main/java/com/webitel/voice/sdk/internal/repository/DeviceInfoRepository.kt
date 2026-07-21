@@ -59,6 +59,6 @@ internal class DeviceInfoRepository(
     }
 
     private fun sdkVersion(): String {
-        return "voice-sdk-android/ ${ BuildConfig.VERSION_NAME }"
+        return "voice-sdk-android/${ BuildConfig.VERSION_NAME }"
     }
 }

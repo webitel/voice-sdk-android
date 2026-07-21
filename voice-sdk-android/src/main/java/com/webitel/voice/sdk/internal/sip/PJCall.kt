@@ -181,7 +181,6 @@ internal class PJCall: Call {
 
 
     override fun onCallMediaEvent(prm: OnCallMediaEventParam) {
-        logger.debug("PJCall", "onCallMediaEvent type=${prm.ev.type} medIdx=${prm.medIdx}")
         // Only respond to PJMEDIA_EVENT_FMT_CHANGED (1212370246).
         // KEYFRAME_FOUND (1297237577) and stream-state events fire BEFORE PJSIP resizes
         // its decode buffer — calling vw.setWindow() then causes a premature reinit.

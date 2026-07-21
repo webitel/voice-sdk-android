@@ -4,6 +4,7 @@ import com.webitel.voice.sdk.LogLevel
 import com.webitel.voice.sdk.User
 import com.webitel.voice.sdk.internal.sip.SipConfig
 import com.webitel.voice.sdk.internal.voice.CallException
+import com.webitel.voice.sdk.internal.voice.CallRatingProvider
 import com.webitel.voice.sdk.internal.voice.WebitelVoiceClient.Companion.logger
 import kotlinx.coroutines.CancellationException
 import okhttp3.OkHttpClient
@@ -24,7 +25,7 @@ internal class AuthManager(
     private val deviceId: String,
     private val userAgent: String,
     private val clientToken: String
-) {
+) : CallRatingProvider {
     @Volatile
     private var jwt: String = ""
     @Volatile
@@ -89,6 +90,35 @@ internal class AuthManager(
             return processSipResponse(response)
         }catch (e: Exception) {
             handleApiException(e)
+        }
+    }
+
+
+    override suspend fun checkRatable(meetingId: String): Result<Boolean> {
+        return try {
+            val response = createApi(jwt.ifEmpty { null }).getMeeting(meetingId)
+            if (!response.isSuccessful) {
+                Result.failure(CallException(response.code(), response.errorBody()?.string() ?: "Unknown error"))
+            } else {
+                Result.success(response.body()?.allowSatisfaction ?: false)
+            }
+        } catch (e: Exception) {
+            Result.failure(mapExceptionToCallException(e))
+        }
+    }
+
+
+    override suspend fun submitRating(meetingId: String, satisfaction: String): Result<Unit> {
+        return try {
+            val response = createApi(jwt.ifEmpty { null })
+                .submitSatisfaction(meetingId, SatisfactionRequest(satisfaction))
+            if (!response.isSuccessful) {
+                Result.failure(CallException(response.code(), response.errorBody()?.string() ?: "Unknown error"))
+            } else {
+                Result.success(Unit)
+            }
+        } catch (e: Exception) {
+            Result.failure(mapExceptionToCallException(e))
         }
     }
 

@@ -43,7 +43,9 @@ import kotlin.jvm.Throws
 
 internal class WebitelCall(
     private val listener: CallStateListener,
-    private var options: CallOptions
+    private var options: CallOptions,
+    private val ratingProvider: CallRatingProvider,
+    private val audioRouter: CallAudioRouter
 ): Call, SipCallCallbacks {
     private val localHandler = VideoSurfaceHandler()
     private val remoteHandler = VideoSurfaceHandler()
@@ -87,6 +89,9 @@ internal class WebitelCall(
             return pjCall?.isOnMute ?: false
         }
 
+    override val isSpeakerphoneOn: Boolean
+        get() = audioRouter.isSpeakerphoneOn
+
     override var isOnHold: Boolean = false
         private set
 
@@ -127,6 +132,18 @@ internal class WebitelCall(
             logger.error("WCall", "setMute error: ${e.message}")
             Result.failure(e)
         }
+    }
+
+
+    override fun setSpeakerphoneOn(enabled: Boolean): Result<Unit> {
+        if (state != CallState.Ongoing) {
+            val message = "setSpeakerphoneOn failed: call is not in an ongoing state. Current state: $state"
+            logger.warn("WCall", message)
+            return Result.failure(IllegalStateException(message))
+        }
+
+        return audioRouter.setSpeakerphoneOn(enabled)
+            .onSuccess { fireSpeakerphoneChanged(enabled) }
     }
 
 
@@ -513,6 +530,26 @@ internal class WebitelCall(
 
     override fun removeAllListeners() {
         listeners.clear()
+    }
+
+
+    override fun isRatable(callback: (Result<Boolean>) -> Unit) {
+        val meetingId = options.meetingId
+        if (meetingId.isNullOrBlank()) {
+            callback(Result.success(false))
+            return
+        }
+        scope.launch { callback(ratingProvider.checkRatable(meetingId)) }
+    }
+
+
+    override fun rate(satisfaction: String, callback: (Result<Unit>) -> Unit) {
+        val meetingId = options.meetingId
+        if (meetingId.isNullOrBlank()) {
+            callback(Result.failure(IllegalStateException("rate failed: call has no meetingId")))
+            return
+        }
+        scope.launch { callback(ratingProvider.submitRating(meetingId, satisfaction)) }
     }
 
 
@@ -926,6 +963,15 @@ internal class WebitelCall(
         listeners.forEach {
             safeListenerCall { it.onCallEvent(event) }
             safeListenerCall { it.onMuteChanged(this, isMuted) }
+        }
+    }
+
+
+    private fun fireSpeakerphoneChanged(isSpeakerphoneOn: Boolean) {
+        val event = CallEvent.SpeakerphoneChanged(id, isSpeakerphoneOn)
+        listeners.forEach {
+            safeListenerCall { it.onCallEvent(event) }
+            safeListenerCall { it.onSpeakerphoneChanged(this, isSpeakerphoneOn) }
         }
     }
 

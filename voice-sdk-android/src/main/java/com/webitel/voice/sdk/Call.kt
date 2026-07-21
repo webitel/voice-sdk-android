@@ -22,6 +22,9 @@ interface Call {
     /** Indicates whether the local microphone is muted. */
     val isMuted: Boolean
 
+    /** True if call audio is currently routed to the built-in speaker via [setSpeakerphoneOn]. */
+    val isSpeakerphoneOn: Boolean
+
     /** Indicates whether the call is currently on hold. */
     val isOnHold: Boolean
 
@@ -52,6 +55,17 @@ interface Call {
      * @return Result.success(Unit) if the operation was successful, or Result.failure with the error.
      */
     fun mute(mute: Boolean): Result<Unit>
+
+
+    /**
+     * Routes call audio to the built-in speaker, or back to the default device (earpiece /
+     * already-connected wired or Bluetooth device).
+     *
+     * @param enabled true to route to the speaker, false to return to the default device.
+     * @return Result.success(Unit) if applied, or Result.failure if the call isn't Ongoing, or
+     *         if enabling the speaker is ignored because a wired/Bluetooth device is connected.
+     */
+    fun setSpeakerphoneOn(enabled: Boolean): Result<Unit>
 
 
     /**
@@ -203,4 +217,29 @@ interface Call {
      * Removes all registered listeners.
      */
     fun removeAllListeners()
+
+
+    /**
+     * Checks whether this call is eligible for rating.
+     *
+     * Only calls created with a `meetingId` (see `CallOptions.meetingId`) can be rated.
+     * If no `meetingId` was set, [callback] is invoked immediately with `Result.success(false)`
+     * and no network request is made. Otherwise this performs a network request to the backend.
+     *
+     * @param callback invoked with the result once the check completes.
+     */
+    fun isRatable(callback: (Result<Boolean>) -> Unit)
+
+
+    /**
+     * Submits a rating for this call.
+     *
+     * @param satisfaction the rating value, passed through to the backend as-is (no validation
+     *        or constraint on its contents is applied by the SDK).
+     * @param callback invoked with the result once the submission completes.
+     *
+     * @return via [callback] `Result.failure` if the call has no `meetingId` (see [isRatable]),
+     *         or the outcome of the network request otherwise.
+     */
+    fun rate(satisfaction: String, callback: (Result<Unit>) -> Unit)
 }

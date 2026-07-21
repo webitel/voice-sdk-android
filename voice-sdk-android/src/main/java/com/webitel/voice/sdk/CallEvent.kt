@@ -26,6 +26,12 @@ sealed class CallEvent {
         val isMuted: Boolean
     ) : CallEvent()
 
+    /** Call audio routing to/from the built-in speaker changed. */
+    data class SpeakerphoneChanged(
+        val callId: String,
+        val isSpeakerphoneOn: Boolean
+    ) : CallEvent()
+
     /** The combined video activity state changed. */
     data class VideoStateChanged(
         val callId: String,

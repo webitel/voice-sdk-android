@@ -56,6 +56,17 @@ interface CallListener {
 
 
     /**
+     * Called when call audio routing to/from the built-in speaker changes.
+     *
+     * Fires after a successful [Call.setSpeakerphoneOn] invocation.
+     *
+     * @param call              the affected call
+     * @param isSpeakerphoneOn true if call audio is now routed to the built-in speaker
+     */
+    fun onSpeakerphoneChanged(call: Call, isSpeakerphoneOn: Boolean) {}
+
+
+    /**
      * Called when the combined video activity state of the call changes.
      *
      * Fires when the local camera starts or stops transmitting, or when the remote
