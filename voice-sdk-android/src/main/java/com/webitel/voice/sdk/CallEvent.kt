@@ -45,4 +45,10 @@ sealed class CallEvent {
         val width: Int,
         val height: Int
     ) : CallEvent()
+
+    /** Local video transmission was paused or resumed via [Call.setLocalVideoPaused]. */
+    data class LocalVideoPausedChanged(
+        val callId: String,
+        val isPaused: Boolean
+    ) : CallEvent()
 }

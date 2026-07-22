@@ -47,6 +47,13 @@ interface Call {
      */
     val videoState: VideoState
 
+    /**
+     * True while local video is paused via [setLocalVideoPaused] — the video session stays
+     * fully negotiated with the remote party (no re-INVITE), but no new locally-captured
+     * frames are being sent. Independent of [videoState].
+     */
+    val isLocalVideoPaused: Boolean
+
 
     /**
      * Attempts to mute or unmute the ongoing call.
@@ -171,6 +178,27 @@ interface Call {
      *         [Result.failure] if the call is not [CallState.Ongoing].
      */
     fun disableVideo(): Result<Unit>
+
+
+    /**
+     * Pauses or resumes sending local camera video to the remote party without renegotiating
+     * the call (no SIP re-INVITE) and without tearing down the camera/preview pipeline the way
+     * [disableVideo] does.
+     *
+     * While paused: the local camera keeps capturing and the local self-view preview surface
+     * keeps rendering the live feed; only the outgoing network stream stops. The remote
+     * party's own video session, and what they're sending to us, are unaffected. [videoState]
+     * does not change — observe [isLocalVideoPaused] and
+     * [CallListener.onLocalVideoPausedChanged] / [CallEvent.LocalVideoPausedChanged] instead.
+     *
+     * No-op returning [Result.success] if [paused] already matches [isLocalVideoPaused].
+     *
+     * @param paused true to stop transmitting local video, false to resume transmitting.
+     * @return [Result.failure] if the call is not [CallState.Ongoing] or there is no active
+     *         local video stream to pause/resume (i.e. [videoState] is [VideoState.INACTIVE]
+     *         or [VideoState.REMOTE_ONLY]).
+     */
+    fun setLocalVideoPaused(paused: Boolean): Result<Unit>
 
 
     /**

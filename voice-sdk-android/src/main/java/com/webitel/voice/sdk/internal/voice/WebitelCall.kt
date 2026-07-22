@@ -70,6 +70,9 @@ internal class WebitelCall(
             isRemoteVideoActive -> VideoState.REMOTE_ONLY
             else -> VideoState.INACTIVE
         }
+
+    override var isLocalVideoPaused: Boolean = false
+        private set
     private var localSurface: Surface? = null
     private var remoteSurface: Surface? = null
     private var currentCameraId: Int = -1
@@ -502,12 +505,49 @@ internal class WebitelCall(
         val call = pjCall ?: return Result.failure(IllegalStateException("disableVideo failed: pjCall is null"))
         return try {
             checkThread()
+            val wasPaused = isLocalVideoPaused
             call.reinviteWithVideoCount(0L)
             stopPreview()
+            if (wasPaused) {
+                fireLocalVideoPausedChanged(false)
+            }
             fireVideoStateChanged()
             Result.success(Unit)
         } catch (e: Exception) {
             logger.error("WCall", "disableVideo error: ${e.message}")
+            Result.failure(e)
+        }
+    }
+
+
+    override fun setLocalVideoPaused(paused: Boolean): Result<Unit> {
+        val call = pjCall
+        if (state != CallState.Ongoing) {
+            val message = "setLocalVideoPaused failed: call is not ongoing. State: $state"
+            logger.warn("WCall", message)
+            return Result.failure(IllegalStateException(message))
+        }
+        if (call == null) {
+            val message = "setLocalVideoPaused failed: pjCall is null"
+            logger.error("WCall", message)
+            return Result.failure(IllegalStateException(message))
+        }
+        if (!isLocalVideoActive) {
+            val message = "setLocalVideoPaused failed: no active local video stream. videoState=$videoState"
+            logger.warn("WCall", message)
+            return Result.failure(IllegalStateException(message))
+        }
+        if (isLocalVideoPaused == paused) {
+            return Result.success(Unit)
+        }
+        return try {
+            checkThread()
+            call.setLocalVideoTransmitting(!paused)
+            isLocalVideoPaused = paused
+            fireLocalVideoPausedChanged(paused)
+            Result.success(Unit)
+        } catch (e: Exception) {
+            logger.error("WCall", "setLocalVideoPaused error: ${e.message}")
             Result.failure(e)
         }
     }
@@ -735,6 +775,17 @@ internal class WebitelCall(
 
             resumeVideo()
 
+            if (isLocalVideoPaused) {
+                // A preview rebuild (e.g. unhold re-arming previewStarted) just force-resumed
+                // transmission via resumeVideo() above — re-apply the user's pause so it
+                // survives transparently. No event: the net paused state hasn't changed.
+                try {
+                    pjCall?.setLocalVideoTransmitting(false)
+                } catch (e: Exception) {
+                    logger.error("WCall", "onShowLocalVideo: failed to re-apply local video pause: ${e.message}")
+                }
+            }
+
             if (!isLocalVideoActive) {
                 isLocalVideoActive = true
                 fireVideoStateChanged()
@@ -785,6 +836,7 @@ internal class WebitelCall(
                 previewStarted = false
                 isLocalVideoActive = false
                 isRemoteVideoActive = false
+                isLocalVideoPaused = false
 
                 // Do NOT call pjCall.delete() here (or deferred to VoiceThread, or anywhere
                 // else after DISCONNECTED) — confirmed by testing that deleting the Call/
@@ -903,6 +955,7 @@ internal class WebitelCall(
         // Reset video flags without firing events — disconnect already signals state change
         isLocalVideoActive = false
         isRemoteVideoActive = false
+        isLocalVideoPaused = false
         try { videoPreview?.stop() } catch (_: Exception) {}
         try { videoPreview?.delete() } catch (_: Exception) {}
         videoPreview = null
@@ -1023,6 +1076,16 @@ internal class WebitelCall(
         listeners.forEach {
             safeListenerCall { it.onCallEvent(event) }
             safeListenerCall { it.onVideoSizeChanged(this, isLocal, width, height) }
+        }
+    }
+
+
+    private fun fireLocalVideoPausedChanged(isPaused: Boolean) {
+        logger.debug("WCall", "fireLocalVideoPausedChanged: $isPaused")
+        val event = CallEvent.LocalVideoPausedChanged(id, isPaused)
+        listeners.forEach {
+            safeListenerCall { it.onCallEvent(event) }
+            safeListenerCall { it.onLocalVideoPausedChanged(this, isPaused) }
         }
     }
 

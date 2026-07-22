@@ -91,4 +91,13 @@ interface CallListener {
      * @param height  real pixel height of the stream
      */
     fun onVideoSizeChanged(call: Call, isLocal: Boolean, width: Int, height: Int) {}
+
+
+    /**
+     * Called when local video transmission is paused or resumed via [Call.setLocalVideoPaused].
+     *
+     * @param call     the affected call
+     * @param isPaused true if the local camera stopped transmitting to the remote party
+     */
+    fun onLocalVideoPausedChanged(call: Call, isPaused: Boolean) {}
 }

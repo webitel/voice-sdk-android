@@ -7,16 +7,20 @@ import org.pjsip.pjsua2.Call
 import org.pjsip.pjsua2.CallInfo
 import org.pjsip.pjsua2.CallMediaInfo
 import org.pjsip.pjsua2.CallOpParam
+import org.pjsip.pjsua2.CallVidSetStreamParam
 import org.pjsip.pjsua2.OnCallMediaEventParam
 import org.pjsip.pjsua2.OnCallMediaStateParam
 import org.pjsip.pjsua2.OnCallStateParam
+import org.pjsip.pjsua2.OnCallTsxStateParam
 import org.pjsip.pjsua2.pjmedia_dir
 import org.pjsip.pjsua2.pjmedia_type
+import org.pjsip.pjsua2.pjsip_event_id_e
 import org.pjsip.pjsua2.pjsip_inv_state
 import org.pjsip.pjsua2.pjsip_status_code
 import org.pjsip.pjsua2.pjsua2
 import org.pjsip.pjsua2.pjsua_call_flag
 import org.pjsip.pjsua2.pjsua_call_media_status
+import org.pjsip.pjsua2.pjsua_call_vid_strm_op
 
 
 internal class PJCall: Call {
@@ -180,6 +184,19 @@ internal class PJCall: Call {
     }
 
 
+    override fun onCallTsxState(prm: OnCallTsxStateParam) {
+        super.onCallTsxState(prm)
+        try {
+            val tsxState = prm.e?.body?.tsxState ?: return
+            if (tsxState.tsx?.method != "INFO") return
+            if (tsxState.type != pjsip_event_id_e.PJSIP_EVENT_RX_MSG) return
+            logger.info("PJCall", "Received SIP INFO:\n${tsxState.src?.rdata?.wholeMsg}")
+        } catch (e: Exception) {
+            logger.error("PJCall", "onCallTsxState error: ${e.message}")
+        }
+    }
+
+
     override fun onCallMediaEvent(prm: OnCallMediaEventParam) {
         // Only respond to PJMEDIA_EVENT_FMT_CHANGED (1212370246).
         // KEYFRAME_FOUND (1297237577) and stream-state events fire BEFORE PJSIP resizes
@@ -308,6 +325,43 @@ internal class PJCall: Call {
             param.opt.audioCount = 1
             param.opt.videoCount = videoCount
             reinvite(param)
+        } finally {
+            try { param.delete() } catch (_: Exception) {}
+        }
+    }
+
+
+    /**
+     * Starts or stops feeding locally captured video frames into this call's network stream,
+     * without touching the negotiated SDP media line (no re-INVITE, no ADD/REMOVE). Mirrors how
+     * [setMute] pauses/resumes audio purely locally.
+     *
+     * @param transmit true to (re)start sending local video frames, false to stop.
+     */
+    @Throws(Exception::class)
+    fun setLocalVideoTransmitting(transmit: Boolean) {
+        checkThread()
+        val callState = withInfo { it.state }
+        if (callState != pjsip_inv_state.PJSIP_INV_STATE_CONFIRMED) {
+            throw java.lang.Exception("setLocalVideoTransmitting failed: invalid state - $callState")
+        }
+        val param = CallVidSetStreamParam()
+        try {
+            vidSetStream(
+                if (transmit) pjsua_call_vid_strm_op.PJSUA_CALL_VID_STRM_START_TRANSMIT
+                else pjsua_call_vid_strm_op.PJSUA_CALL_VID_STRM_STOP_TRANSMIT,
+                param
+            )
+            if (transmit) {
+                // Explicit keyframe right after resuming: STOP_TRANSMIT may have left the
+                // remote decoder without a reference frame, and the next periodic keyframe
+                // could be seconds away — request one explicitly for a clean picture right away.
+                try {
+                    vidSetStream(pjsua_call_vid_strm_op.PJSUA_CALL_VID_STRM_SEND_KEYFRAME, param)
+                } catch (e: Exception) {
+                    logger.error("PJCall", "setLocalVideoTransmitting: keyframe request failed: ${e.message}")
+                }
+            }
         } finally {
             try { param.delete() } catch (_: Exception) {}
         }
