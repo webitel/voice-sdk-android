@@ -21,6 +21,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import org.json.JSONObject
 import org.pjsip.pjsua2.CallMediaInfo
 import org.pjsip.pjsua2.CallVidSetStreamParam
 import org.pjsip.pjsua2.Endpoint
@@ -130,6 +131,7 @@ internal class WebitelCall(
             logger.debug("WCall", "mute: $mute")
             call.setMute(mute)
             fireMuteChanged(mute)
+            sendMediaStateInfo()
             Result.success(Unit)
         } catch (e: Exception) {
             logger.error("WCall", "setMute error: ${e.message}")
@@ -545,6 +547,7 @@ internal class WebitelCall(
             call.setLocalVideoTransmitting(!paused)
             isLocalVideoPaused = paused
             fireLocalVideoPausedChanged(paused)
+            sendMediaStateInfo()
             Result.success(Unit)
         } catch (e: Exception) {
             logger.error("WCall", "setLocalVideoPaused error: ${e.message}")
@@ -1037,6 +1040,23 @@ internal class WebitelCall(
                 safeListenerCall { it.onCallEvent(event) }
                 safeListenerCall { it.onHoldChanged(this, onHold) }
             }
+            sendMediaStateInfo()
+        }
+    }
+
+
+    private fun sendMediaStateInfo() {
+        val call = pjCall ?: return
+        try {
+            val json = JSONObject()
+                .put("videoMuted", isLocalVideoPaused)
+                .put("audioMuted", isMuted)
+                .put("hold", isOnHold)
+                .toString()
+            logger.debug("WCall", "sendMediaStateInfo: ${json}")
+            call.sendInfo("application/json", json)
+        } catch (e: Exception) {
+            logger.error("WCall", "sendMediaStateInfo error: ${e.message}")
         }
     }
 

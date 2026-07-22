@@ -7,11 +7,13 @@ import org.pjsip.pjsua2.Call
 import org.pjsip.pjsua2.CallInfo
 import org.pjsip.pjsua2.CallMediaInfo
 import org.pjsip.pjsua2.CallOpParam
+import org.pjsip.pjsua2.CallSendRequestParam
 import org.pjsip.pjsua2.CallVidSetStreamParam
 import org.pjsip.pjsua2.OnCallMediaEventParam
 import org.pjsip.pjsua2.OnCallMediaStateParam
 import org.pjsip.pjsua2.OnCallStateParam
 import org.pjsip.pjsua2.OnCallTsxStateParam
+import org.pjsip.pjsua2.SipTxOption
 import org.pjsip.pjsua2.pjmedia_dir
 import org.pjsip.pjsua2.pjmedia_type
 import org.pjsip.pjsua2.pjsip_event_id_e
@@ -415,6 +417,24 @@ internal class PJCall: Call {
     fun sendDtmf(value: String) {
         checkThread()
         dialDtmf(value)
+    }
+
+
+    @Throws(Exception::class)
+    fun sendInfo(contentType: String, body: String) {
+        checkThread()
+        val txOption = SipTxOption()
+        val param = CallSendRequestParam()
+        try {
+            txOption.contentType = contentType
+            txOption.msgBody = body
+            param.method = "INFO"
+            param.txOption = txOption
+            sendRequest(param)
+        } finally {
+            try { param.delete() } catch (_: Exception) {}
+            try { txOption.delete() } catch (_: Exception) {}
+        }
     }
 
 
