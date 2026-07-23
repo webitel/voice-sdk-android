@@ -8,9 +8,10 @@ import android.media.AudioManager
 import android.os.Build
 import com.webitel.voice.sdk.Call
 import com.webitel.voice.sdk.CallEndReasonCode.Companion.fromCode
-import com.webitel.voice.sdk.CallListener
+import com.webitel.voice.sdk.CallEventListener
 import com.webitel.voice.sdk.CallOptions
 import com.webitel.voice.sdk.CallState
+import com.webitel.voice.sdk.ConnectionEvent
 import com.webitel.voice.sdk.User
 import com.webitel.voice.sdk.VoiceClient
 import com.webitel.voice.sdk.internal.auth.AuthManager
@@ -81,28 +82,26 @@ internal class WebitelVoiceClient(private val client: VoiceClient.Builder): Voic
 
     override fun makeCall(
         options: CallOptions,
-        listener: CallListener
+        listener: CallEventListener
     ): Call {
         activeCall?.takeIf { it.state !is CallState.Disconnected }?.let { existingCall ->
             logger.warn("WebitelVoiceClient",
                 "makeAudioCall: Active call already exists in state: ${existingCall.state}"
             )
-            existingCall.addListener(listener)
+            existingCall.addEventListener(listener)
             return existingCall
         }
 
         requestCallAudioFocus(audioManager)
 
         val voice = WebitelCall(VoiceManager, options, authManager, audioRouter).apply {
-            addListener(listener)
-            addListener(object : CallListener {
-                override fun onCallStateChanged(call: Call, state: CallState) {
-                    if (state is CallState.Disconnected) {
-                        abandonCallAudioFocus(audioManager)
-                        audioRouter.reset()
-                    }
+            addEventListener(listener)
+            addEventListener { event ->
+                if (event is ConnectionEvent.StateChanged && event.state is CallState.Disconnected) {
+                    abandonCallAudioFocus(audioManager)
+                    audioRouter.reset()
                 }
-            })
+            }
         }
         VoiceManager.activeCall = voice
 
@@ -117,7 +116,7 @@ internal class WebitelVoiceClient(private val client: VoiceClient.Builder): Voic
     override fun makeCall(
         jwt: String,
         options: CallOptions,
-        listener: CallListener
+        listener: CallEventListener
     ): Call {
         setUserJWT(jwt)
         return makeCall(options, listener)

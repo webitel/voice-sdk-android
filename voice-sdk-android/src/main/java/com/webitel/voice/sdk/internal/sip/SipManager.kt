@@ -67,17 +67,22 @@ internal class SipManager {
         val pjCall = PJCall(a, e, callbacks)
 
         val callOpParam = CallOpParam()
-        var shv: SipHeaderVector? = null
-        var sh: SipHeader? = null
+        val shv = SipHeaderVector()
+        var meetingHeader: SipHeader? = null
+        var supportHeader: SipHeader? = null
         try {
             if (!callOptions.meetingId.isNullOrEmpty()) {
-                shv = SipHeaderVector()
-                sh = SipHeader()
-                sh.hName = "X-Webitel-Meeting"
-                sh.hValue = callOptions.meetingId
-                shv.add(sh)
-                callOpParam.getTxOption().headers = shv
+                meetingHeader = SipHeader()
+                meetingHeader.hName = "X-Webitel-Meeting"
+                meetingHeader.hValue = callOptions.meetingId
+                shv.add(meetingHeader)
             }
+
+            supportHeader = SipHeader()
+            supportHeader.hName = "X-FS-Support"
+            supportHeader.hValue = "update_display,send_info"
+            shv.add(supportHeader)
+            callOpParam.getTxOption().headers = shv
 
             callOpParam.opt.videoCount = callOptions.type.code
             callOpParam.opt.audioCount = 1
@@ -92,8 +97,9 @@ internal class SipManager {
             }
 
         } finally {
-            try { sh?.delete() } catch (_: Exception) {}
-            try { shv?.delete() } catch (_: Exception) {}
+            try { meetingHeader?.delete() } catch (_: Exception) {}
+            try { supportHeader?.delete() } catch (_: Exception) {}
+            try { shv.delete() } catch (_: Exception) {}
             try { callOpParam.delete() } catch (_: Exception) {}
         }
 

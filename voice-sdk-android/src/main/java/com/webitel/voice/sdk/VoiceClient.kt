@@ -37,7 +37,7 @@ interface VoiceClient {
      * @param listener A listener to observe call state and events.
      * @return A new Call instance representing the initiated audio call.
      */
-    fun makeCall(options: CallOptions = CallOptions(), listener: CallListener): Call
+    fun makeCall(options: CallOptions = CallOptions(), listener: CallEventListener): Call
 
 
     /**
@@ -48,7 +48,7 @@ interface VoiceClient {
      * @param listener A listener to observe call state and events.
      * @return A new Call instance representing the initiated audio call.
      */
-    fun makeCall(jwt: String, options: CallOptions = CallOptions(), listener: CallListener): Call
+    fun makeCall(jwt: String, options: CallOptions = CallOptions(), listener: CallEventListener): Call
 
 
     /**

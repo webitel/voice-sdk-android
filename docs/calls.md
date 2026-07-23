@@ -108,9 +108,9 @@ call.disconnect()
 ## Listeners
 
 ```kotlin
-call.addListener(listener)
-call.removeListener(listener)
-call.removeAllListeners()
+call.addEventListener(listener)
+call.removeEventListener(listener)
+call.removeAllEventListeners()
 ```
 
-See [Events](events.md) for the full `CallListener` / `CallEvent` reference.
+See [Events](events.md) for the full `CallEventListener` / `CallEvent` reference.

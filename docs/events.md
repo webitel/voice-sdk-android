@@ -1,58 +1,96 @@
 # Events
 
-To receive call state and property updates, register a `CallListener` on a
-`Call` instance:
+To receive call events, register a `CallEventListener` on a `Call` instance:
 
 ```kotlin
-call.addListener(this)
+call.addEventListener(this)
+```
+
+`CallEventListener` is a single-method (SAM) interface, so a lambda works too:
+
+```kotlin
+call.addEventListener { event ->
+    when (event) {
+        is ConnectionEvent.StateChanged -> { }
+        is LocalMediaEvent -> { }
+        is VideoEvent -> { }
+        is RemoteMediaEvent -> { }
+    }
+}
 ```
 
 
 ## Interface
 
 ```kotlin
-interface CallListener {
-    /** Called when the call connection state changes. The only required method. */
-    fun onCallStateChanged(call: Call, state: CallState)
-
-    /** Unified event stream entry point. Fires for every event before the corresponding individual callback. */
-    fun onCallEvent(event: CallEvent) {}
-
-    /** Called when the hold status of the call changes. */
-    fun onHoldChanged(call: Call, isOnHold: Boolean) {}
-
-    /** Called when the local microphone mute state changes. */
-    fun onMuteChanged(call: Call, isMuted: Boolean) {}
-
-    /** Called when the combined video activity state of the call changes. */
-    fun onVideoStateChanged(call: Call, state: VideoState) {}
+fun interface CallEventListener {
+    /** Called for every call event. */
+    fun onEvent(event: CallEvent)
 }
 ```
 
-All methods except `onCallStateChanged` have default empty implementations —
-override only what you need.
-
-For Flutter `EventChannel` bridging, implement only `onCallEvent` — it
-receives every event as a sealed `CallEvent` that can be serialized to a
-`Map`. For native Android usage, the individual callback methods provide a
-more idiomatic API.
+For Flutter `EventChannel` bridging, `event` serializes directly to a `Map` — that's
+the reason this stays one unified callback instead of a method per event type.
 
 
 ## Event model
 
-```kotlin
-sealed class CallEvent {
-    /** The call connection state changed. */
-    data class StateChanged(val callId: String, val state: CallState) : CallEvent()
+Every event carries `callId`, so it can be correlated with a specific `Call` instance
+without matching on the concrete subtype first. Events are grouped by the nature of
+the change:
 
+```kotlin
+sealed interface CallEvent {
+    val callId: String
+}
+
+/** The call's connection lifecycle. */
+sealed class ConnectionEvent : CallEvent {
+    /** The call moved to a new [CallState] (e.g. ringing, connecting, ongoing, disconnected). */
+    data class StateChanged(override val callId: String, val state: CallState) : ConnectionEvent()
+}
+
+/**
+ * Local-side call controls, changed as a result of calling methods on this [Call]
+ * ([Call.hold], [Call.mute], [Call.setSpeakerphoneOn], [Call.setLocalVideoPaused]).
+ */
+sealed class LocalMediaEvent : CallEvent {
     /** The hold status changed. */
-    data class HoldChanged(val callId: String, val isOnHold: Boolean) : CallEvent()
+    data class HoldChanged(override val callId: String, val isOnHold: Boolean) : LocalMediaEvent()
 
     /** The local microphone mute state changed. */
-    data class MuteChanged(val callId: String, val isMuted: Boolean) : CallEvent()
+    data class MuteChanged(override val callId: String, val isMuted: Boolean) : LocalMediaEvent()
 
+    /** Call audio routing to/from the built-in speaker changed. */
+    data class SpeakerphoneChanged(override val callId: String, val isSpeakerphoneOn: Boolean) : LocalMediaEvent()
+
+    /** Local video transmission was paused or resumed via [Call.setLocalVideoPaused]. */
+    data class VideoPausedChanged(override val callId: String, val isPaused: Boolean) : LocalMediaEvent()
+}
+
+/** Video stream activity and geometry — combined for both local capture and remote decode. */
+sealed class VideoEvent : CallEvent {
     /** The combined video activity state changed. */
-    data class VideoStateChanged(val callId: String, val state: VideoState) : CallEvent()
+    data class StateChanged(override val callId: String, val state: VideoState) : VideoEvent()
+
+    /** The real pixel dimensions of a video stream changed (local capture or remote decode). */
+    data class SizeChanged(override val callId: String, val isLocal: Boolean, val width: Int, val height: Int) : VideoEvent()
+}
+
+/**
+ * The remote party's media state, reported via a SIP INFO packet (not a renegotiation).
+ * Mirrors [LocalMediaEvent] for the other side — there is no remote equivalent of
+ * `SpeakerphoneChanged`, a purely local audio-routing decision.
+ */
+sealed class RemoteMediaEvent : CallEvent {
+    /** The remote party's hold status changed. */
+    data class HoldChanged(override val callId: String, val isOnHold: Boolean) : RemoteMediaEvent()
+
+    /** The remote party's microphone mute state changed. */
+    data class MuteChanged(override val callId: String, val isMuted: Boolean) : RemoteMediaEvent()
+
+    /** The remote party paused or resumed sending video. */
+    data class VideoPausedChanged(override val callId: String, val isPaused: Boolean) : RemoteMediaEvent()
 }
 ```
 
@@ -60,12 +98,21 @@ sealed class CallEvent {
 ## Handling events
 
 ```kotlin
-override fun onCallEvent(event: CallEvent) {
+override fun onEvent(event: CallEvent) {
     when (event) {
-        is CallEvent.StateChanged -> { }
-        is CallEvent.HoldChanged -> { }
-        is CallEvent.MuteChanged -> { }
-        is CallEvent.VideoStateChanged -> { }
+        is ConnectionEvent.StateChanged -> { }
+        is LocalMediaEvent.HoldChanged -> { }
+        is LocalMediaEvent.MuteChanged -> { }
+        is LocalMediaEvent.SpeakerphoneChanged -> { }
+        is LocalMediaEvent.VideoPausedChanged -> { }
+        is VideoEvent.StateChanged -> { }
+        is VideoEvent.SizeChanged -> { }
+        is RemoteMediaEvent.HoldChanged -> { }
+        is RemoteMediaEvent.MuteChanged -> { }
+        is RemoteMediaEvent.VideoPausedChanged -> { }
     }
 }
 ```
+
+`ConnectionEvent.StateChanged` is the most important event — make sure to handle it
+even in a non-exhaustive `when`.

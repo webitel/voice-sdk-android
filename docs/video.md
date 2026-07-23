@@ -24,8 +24,8 @@ enum class VideoState {
 }
 ```
 
-Changes are reported via `CallListener.onVideoStateChanged` and
-`CallEvent.VideoStateChanged`, see [Events](events.md).
+Changes are reported via `CallEventListener.onEvent` with a `VideoEvent.StateChanged`
+event, see [Events](events.md).
 
 
 ## Enable / disable video
@@ -45,7 +45,7 @@ call.disableVideo()
 Behavior
 
 - both are asynchronous — they renegotiate the call with the remote party
-- `onVideoStateChanged` fires once the change completes
+- a `VideoEvent.StateChanged` event fires once the change completes
 - calling either method when the call is already in that state returns success immediately
 - both require the call to be in `CallState.Ongoing`
 

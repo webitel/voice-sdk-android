@@ -5,10 +5,14 @@ import com.webitel.voice.sdk.Call
 import com.webitel.voice.sdk.CallEndReason
 import com.webitel.voice.sdk.CallEndReasonCode.Companion.fromCode
 import com.webitel.voice.sdk.CallEvent
-import com.webitel.voice.sdk.CallListener
+import com.webitel.voice.sdk.CallEventListener
 import com.webitel.voice.sdk.CallOptions
 import com.webitel.voice.sdk.CallState
 import com.webitel.voice.sdk.CallType
+import com.webitel.voice.sdk.ConnectionEvent
+import com.webitel.voice.sdk.LocalMediaEvent
+import com.webitel.voice.sdk.RemoteMediaEvent
+import com.webitel.voice.sdk.VideoEvent
 import com.webitel.voice.sdk.VideoOrientation
 import com.webitel.voice.sdk.VideoState
 import com.webitel.voice.sdk.internal.sip.CameraOrientation
@@ -52,7 +56,7 @@ internal class WebitelCall(
     private val remoteHandler = VideoSurfaceHandler()
     override val id: String = UUID.randomUUID().toString()
     private var pjCall: PJCall? = null
-    private val listeners: MutableSet<CallListener> =
+    private val listeners: MutableSet<CallEventListener> =
         Collections.newSetFromMap(ConcurrentHashMap())
 
     override val type: CallType
@@ -73,6 +77,13 @@ internal class WebitelCall(
         }
 
     override var isLocalVideoPaused: Boolean = false
+        private set
+
+    override var isRemoteMuted: Boolean = false
+        private set
+    override var isRemoteOnHold: Boolean = false
+        private set
+    override var isRemoteVideoPaused: Boolean = false
         private set
     private var localSurface: Surface? = null
     private var remoteSurface: Surface? = null
@@ -111,8 +122,8 @@ internal class WebitelCall(
 
     override fun mute(mute: Boolean): Result<Unit> {
         val call = pjCall
-        if (state != CallState.Ongoing) {
-            val message = "Mute failed: call is not in an ongoing state. Current state: $state"
+        if (state == CallState.IDLE || state is CallState.Disconnected) {
+            val message = "Mute failed: call is not active. Current state: $state"
             logger.warn("WCall", message)
             return Result.failure(IllegalStateException(message))
         }
@@ -131,7 +142,15 @@ internal class WebitelCall(
             logger.debug("WCall", "mute: $mute")
             call.setMute(mute)
             fireMuteChanged(mute)
-            sendMediaStateInfo()
+            if (state == CallState.Ongoing) sendMediaStateInfo()
+            Result.success(Unit)
+        } catch (e: IllegalStateException) {
+            // No active audio media yet (e.g. still Connecting/Ringing) — record the
+            // desired state; PJCall's mute-restore logic (onCallMediaState) applies it
+            // for real as soon as audio media actually activates.
+            logger.debug("WCall", "mute (pending): $mute")
+            call.setDesiredMute(mute)
+            fireMuteChanged(mute)
             Result.success(Unit)
         } catch (e: Exception) {
             logger.error("WCall", "setMute error: ${e.message}")
@@ -232,7 +251,7 @@ internal class WebitelCall(
                 logger.error("WCall", message)
                 return Result.failure(IllegalStateException(message))
             }
-            if (state != CallState.Ongoing) {
+            if (state == CallState.IDLE || state is CallState.Disconnected) {
                 val message = "switchCamera failed: call is not active. State: $state"
                 logger.error("WCall", message)
                 return Result.failure(IllegalStateException(message))
@@ -524,8 +543,8 @@ internal class WebitelCall(
 
     override fun setLocalVideoPaused(paused: Boolean): Result<Unit> {
         val call = pjCall
-        if (state != CallState.Ongoing) {
-            val message = "setLocalVideoPaused failed: call is not ongoing. State: $state"
+        if (state == CallState.IDLE || state is CallState.Disconnected) {
+            val message = "setLocalVideoPaused failed: call is not active. State: $state"
             logger.warn("WCall", message)
             return Result.failure(IllegalStateException(message))
         }
@@ -534,20 +553,29 @@ internal class WebitelCall(
             logger.error("WCall", message)
             return Result.failure(IllegalStateException(message))
         }
-        if (!isLocalVideoActive) {
-            val message = "setLocalVideoPaused failed: no active local video stream. videoState=$videoState"
+        if (!isVideo()) {
+            val message = "setLocalVideoPaused failed: call does not support video."
             logger.warn("WCall", message)
             return Result.failure(IllegalStateException(message))
         }
         if (isLocalVideoPaused == paused) {
             return Result.success(Unit)
         }
+
         return try {
             checkThread()
             call.setLocalVideoTransmitting(!paused)
             isLocalVideoPaused = paused
             fireLocalVideoPausedChanged(paused)
-            sendMediaStateInfo()
+            if (state == CallState.Ongoing) sendMediaStateInfo()
+            Result.success(Unit)
+        } catch (e: IllegalStateException) {
+            // No active local video stream yet (e.g. still Connecting/Ringing, or video
+            // temporarily inactive) — record the desired state; onShowLocalVideo()'s
+            // re-apply logic pauses transmission for real as soon as local video
+            // actually activates.
+            isLocalVideoPaused = paused
+            fireLocalVideoPausedChanged(paused)
             Result.success(Unit)
         } catch (e: Exception) {
             logger.error("WCall", "setLocalVideoPaused error: ${e.message}")
@@ -568,17 +596,17 @@ internal class WebitelCall(
     }
 
 
-    override fun addListener(listener: CallListener) {
+    override fun addEventListener(listener: CallEventListener) {
         listeners += listener
     }
 
 
-    override fun removeListener(listener: CallListener) {
+    override fun removeEventListener(listener: CallEventListener) {
         listeners -= listener
     }
 
 
-    override fun removeAllListeners() {
+    override fun removeAllEventListeners() {
         listeners.clear()
     }
 
@@ -613,6 +641,22 @@ internal class WebitelCall(
         // PJCall.handleVideoMedia() — LOCAL_HOLD/REMOTE_HOLD leaves the local preview
         // untouched, so there is nothing to reset when the call goes on/off hold.
     }
+
+    override fun onRemoteMediaStateInfo(audioMuted: Boolean?, videoMuted: Boolean?, hold: Boolean?) {
+        if (audioMuted != null && audioMuted != isRemoteMuted) {
+            isRemoteMuted = audioMuted
+            fireRemoteMuteChanged(audioMuted)
+        }
+        if (hold != null && hold != isRemoteOnHold) {
+            isRemoteOnHold = hold
+            fireRemoteHoldChanged(hold)
+        }
+        if (videoMuted != null && videoMuted != isRemoteVideoPaused) {
+            isRemoteVideoPaused = videoMuted
+            fireRemoteVideoPausedChanged(videoMuted)
+        }
+    }
+
 
     fun resumeVideo() {
         val callVidPrm = CallVidSetStreamParam()
@@ -959,6 +1003,9 @@ internal class WebitelCall(
         isLocalVideoActive = false
         isRemoteVideoActive = false
         isLocalVideoPaused = false
+        isRemoteMuted = false
+        isRemoteOnHold = false
+        isRemoteVideoPaused = false
         try { videoPreview?.stop() } catch (_: Exception) {}
         try { videoPreview?.delete() } catch (_: Exception) {}
         videoPreview = null
@@ -1021,10 +1068,9 @@ internal class WebitelCall(
                 val oldState = this.state
                 this.state = state
                 logger.debug("WCall", "onCallState: from - $oldState, to - $state")
-                val event = CallEvent.StateChanged(id, state)
-                listeners.forEach {
-                    safeListenerCall { it.onCallEvent(event) }
-                    safeListenerCall { it.onCallStateChanged(this, state) }
+                fireEvent(ConnectionEvent.StateChanged(id, state))
+                if (state == CallState.Ongoing) {
+                    sendMediaStateInfo()
                 }
             }
         }
@@ -1035,11 +1081,7 @@ internal class WebitelCall(
         if (isOnHold != onHold) {
             isOnHold = onHold
             logger.debug("WCall", "onHold: new - $onHold")
-            val event = CallEvent.HoldChanged(id, onHold)
-            listeners.forEach {
-                safeListenerCall { it.onCallEvent(event) }
-                safeListenerCall { it.onHoldChanged(this, onHold) }
-            }
+            fireEvent(LocalMediaEvent.HoldChanged(id, onHold))
             sendMediaStateInfo()
         }
     }
@@ -1062,51 +1104,54 @@ internal class WebitelCall(
 
 
     private fun fireMuteChanged(isMuted: Boolean) {
-        val event = CallEvent.MuteChanged(id, isMuted)
-        listeners.forEach {
-            safeListenerCall { it.onCallEvent(event) }
-            safeListenerCall { it.onMuteChanged(this, isMuted) }
-        }
+        fireEvent(LocalMediaEvent.MuteChanged(id, isMuted))
     }
 
 
     private fun fireSpeakerphoneChanged(isSpeakerphoneOn: Boolean) {
-        val event = CallEvent.SpeakerphoneChanged(id, isSpeakerphoneOn)
-        listeners.forEach {
-            safeListenerCall { it.onCallEvent(event) }
-            safeListenerCall { it.onSpeakerphoneChanged(this, isSpeakerphoneOn) }
-        }
+        fireEvent(LocalMediaEvent.SpeakerphoneChanged(id, isSpeakerphoneOn))
     }
 
 
     private fun fireVideoStateChanged() {
         val state = videoState
         logger.debug("WCall", "fireVideoStateChanged: $state")
-        val event = CallEvent.VideoStateChanged(id, state)
-        listeners.forEach {
-            safeListenerCall { it.onCallEvent(event) }
-            safeListenerCall { it.onVideoStateChanged(this, state) }
-        }
+        fireEvent(VideoEvent.StateChanged(id, state))
     }
 
 
     private fun fireVideoSizeChanged(isLocal: Boolean, width: Int, height: Int) {
         logger.debug("WCall", "fireVideoSizeChanged: isLocal=$isLocal ${width}x${height}")
-        val event = CallEvent.VideoSizeChanged(id, isLocal, width, height)
-        listeners.forEach {
-            safeListenerCall { it.onCallEvent(event) }
-            safeListenerCall { it.onVideoSizeChanged(this, isLocal, width, height) }
-        }
+        fireEvent(VideoEvent.SizeChanged(id, isLocal, width, height))
     }
 
 
     private fun fireLocalVideoPausedChanged(isPaused: Boolean) {
         logger.debug("WCall", "fireLocalVideoPausedChanged: $isPaused")
-        val event = CallEvent.LocalVideoPausedChanged(id, isPaused)
-        listeners.forEach {
-            safeListenerCall { it.onCallEvent(event) }
-            safeListenerCall { it.onLocalVideoPausedChanged(this, isPaused) }
-        }
+        fireEvent(LocalMediaEvent.VideoPausedChanged(id, isPaused))
+    }
+
+
+    private fun fireRemoteMuteChanged(isMuted: Boolean) {
+        logger.debug("WCall", "fireRemoteMuteChanged: $isMuted")
+        fireEvent(RemoteMediaEvent.MuteChanged(id, isMuted))
+    }
+
+
+    private fun fireRemoteHoldChanged(isOnHold: Boolean) {
+        logger.debug("WCall", "fireRemoteHoldChanged: $isOnHold")
+        fireEvent(RemoteMediaEvent.HoldChanged(id, isOnHold))
+    }
+
+
+    private fun fireRemoteVideoPausedChanged(isPaused: Boolean) {
+        logger.debug("WCall", "fireRemoteVideoPausedChanged: $isPaused")
+        fireEvent(RemoteMediaEvent.VideoPausedChanged(id, isPaused))
+    }
+
+
+    private fun fireEvent(event: CallEvent) {
+        listeners.forEach { safeListenerCall { it.onEvent(event) } }
     }
 
 

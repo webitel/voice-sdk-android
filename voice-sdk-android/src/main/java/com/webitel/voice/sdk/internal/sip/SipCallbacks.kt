@@ -16,4 +16,10 @@ internal interface SipCallCallbacks {
 
     /** Fired when remote video decoding stops (media becomes inactive or direction loses decoding). */
     fun onRemoteVideoStopped()
+
+    /**
+     * Fired when the remote party's media state is reported via a SIP INFO packet.
+     * Each parameter is null if that field was absent from the payload.
+     */
+    fun onRemoteMediaStateInfo(audioMuted: Boolean?, videoMuted: Boolean?, hold: Boolean?)
 }

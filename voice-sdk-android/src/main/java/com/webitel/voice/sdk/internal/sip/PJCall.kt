@@ -1,6 +1,7 @@
 package com.webitel.voice.sdk.internal.sip
 
 import com.webitel.voice.sdk.internal.voice.WebitelVoiceClient.Companion.logger
+import org.json.JSONObject
 import org.pjsip.pjsua2.AudDevManager
 import org.pjsip.pjsua2.AudioMedia
 import org.pjsip.pjsua2.Call
@@ -45,6 +46,16 @@ internal class PJCall: Call {
 
     var isOnMute: Boolean = false
         private set
+
+    /**
+     * Records the desired mute state without touching any native audio device.
+     * Used before the call has active audio media (e.g. still Ringing) — the existing
+     * mute-restore logic in [onCallMediaState] applies it for real as soon as audio
+     * media actually activates.
+     */
+    fun setDesiredMute(muted: Boolean) {
+        isOnMute = muted
+    }
 
 
     override fun onCallState(prm: OnCallStateParam?) {
@@ -192,9 +203,40 @@ internal class PJCall: Call {
             val tsxState = prm.e?.body?.tsxState ?: return
             if (tsxState.tsx?.method != "INFO") return
             if (tsxState.type != pjsip_event_id_e.PJSIP_EVENT_RX_MSG) return
-            logger.info("PJCall", "Received SIP INFO:\n${tsxState.src?.rdata?.wholeMsg}")
+            val wholeMsg = tsxState.src?.rdata?.wholeMsg ?: return
+            logger.info("PJCall", "Received SIP INFO:\n$wholeMsg")
+            parseMediaStateInfo(wholeMsg)
         } catch (e: Exception) {
             logger.error("PJCall", "onCallTsxState error: ${e.message}")
+        }
+    }
+
+
+    /**
+     * PJSIP_EVENT_RX_MSG for an INFO transaction fires both for the 200 OK response to our own
+     * outgoing [sendInfo] and for a genuine incoming INFO request from the remote party — the
+     * SWIG bindings expose no request/response discriminator, so the first line of the raw
+     * message must be checked (a response starts with "SIP/2.0 ", a request doesn't).
+     */
+    private fun parseMediaStateInfo(wholeMsg: String) {
+        val firstLineEnd = wholeMsg.indexOf('\n')
+        if (firstLineEnd < 0) return
+        val firstLine = wholeMsg.substring(0, firstLineEnd).trim()
+        if (firstLine.startsWith("SIP/2.0")) return
+        if (!wholeMsg.contains("application/json", ignoreCase = true)) return
+        val separator = wholeMsg.indexOf("\r\n\r\n").let { if (it >= 0) it + 4 else wholeMsg.indexOf("\n\n") + 2 }
+        if (separator <= 0 || separator >= wholeMsg.length) return
+        val body = wholeMsg.substring(separator).trim()
+        if (body.isEmpty()) return
+        try {
+            val json = JSONObject(body)
+            event.onRemoteMediaStateInfo(
+                audioMuted = if (json.has("audioMuted")) json.getBoolean("audioMuted") else null,
+                videoMuted = if (json.has("videoMuted")) json.getBoolean("videoMuted") else null,
+                hold = if (json.has("hold")) json.getBoolean("hold") else null,
+            )
+        } catch (e: Exception) {
+            logger.error("PJCall", "parseMediaStateInfo error: ${e.message}")
         }
     }
 
@@ -340,12 +382,27 @@ internal class PJCall: Call {
      *
      * @param transmit true to (re)start sending local video frames, false to stop.
      */
-    @Throws(Exception::class)
+    @Throws(IllegalStateException::class)
     fun setLocalVideoTransmitting(transmit: Boolean) {
         checkThread()
-        val callState = withInfo { it.state }
-        if (callState != pjsip_inv_state.PJSIP_INV_STATE_CONFIRMED) {
-            throw java.lang.Exception("setLocalVideoTransmitting failed: invalid state - $callState")
+        val ci = info
+        var processed = false
+        try {
+            for (i in ci.media.indices) {
+                val mediaInfo = ci.media[i]
+                if (
+                    mediaInfo.type == pjmedia_type.PJMEDIA_TYPE_VIDEO &&
+                    mediaInfo.status == pjsua_call_media_status.PJSUA_CALL_MEDIA_ACTIVE &&
+                    (mediaInfo.dir and pjmedia_dir.PJMEDIA_DIR_ENCODING) != 0
+                ) {
+                    processed = true
+                }
+            }
+        } finally {
+            try { ci.delete() } catch (_: Exception) {}
+        }
+        if (!processed) {
+            throw IllegalStateException("setLocalVideoTransmitting failed: no active local video stream")
         }
         val param = CallVidSetStreamParam()
         try {

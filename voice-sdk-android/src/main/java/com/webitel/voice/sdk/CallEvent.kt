@@ -2,53 +2,107 @@ package com.webitel.voice.sdk
 
 
 /**
- * A unified event type emitted by [CallListener.onCallEvent].
+ * A unified event type emitted by [CallEventListener.onEvent].
  *
- * Designed so a single listener method receives all events.
+ * Every event carries [callId] so it can be correlated with a specific [Call] instance
+ * without first matching on the concrete subtype — useful for logging, routing, or
+ * Flutter `EventChannel` serialization.
+ *
+ * Events are grouped by nature of the change:
+ *  - [ConnectionEvent] — the call's connection lifecycle.
+ *  - [LocalMediaEvent] — local media controls toggled through [Call] methods.
+ *  - [VideoEvent] — combined video activity and stream geometry.
+ *  - [RemoteMediaEvent] — the remote party's media state, reported via SIP INFO.
  */
-sealed class CallEvent {
+sealed interface CallEvent {
+    val callId: String
+}
 
-    /** The call connection state changed. */
+
+/** The call's connection lifecycle. */
+sealed class ConnectionEvent : CallEvent {
+
+    /** The call moved to a new [CallState] (e.g. ringing, connecting, ongoing, disconnected). */
     data class StateChanged(
-        val callId: String,
+        override val callId: String,
         val state: CallState
-    ) : CallEvent()
+    ) : ConnectionEvent()
+}
+
+
+/**
+ * Local-side call controls, changed as a result of calling methods on this [Call]
+ * ([Call.hold], [Call.mute], [Call.setSpeakerphoneOn], [Call.setLocalVideoPaused]).
+ */
+sealed class LocalMediaEvent : CallEvent {
 
     /** The hold status changed. */
     data class HoldChanged(
-        val callId: String,
+        override val callId: String,
         val isOnHold: Boolean
-    ) : CallEvent()
+    ) : LocalMediaEvent()
 
     /** The local microphone mute state changed. */
     data class MuteChanged(
-        val callId: String,
+        override val callId: String,
         val isMuted: Boolean
-    ) : CallEvent()
+    ) : LocalMediaEvent()
 
     /** Call audio routing to/from the built-in speaker changed. */
     data class SpeakerphoneChanged(
-        val callId: String,
+        override val callId: String,
         val isSpeakerphoneOn: Boolean
-    ) : CallEvent()
+    ) : LocalMediaEvent()
+
+    /** Local video transmission was paused or resumed via [Call.setLocalVideoPaused]. */
+    data class VideoPausedChanged(
+        override val callId: String,
+        val isPaused: Boolean
+    ) : LocalMediaEvent()
+}
+
+
+/** Video stream activity and geometry — combined for both local capture and remote decode. */
+sealed class VideoEvent : CallEvent {
 
     /** The combined video activity state changed. */
-    data class VideoStateChanged(
-        val callId: String,
+    data class StateChanged(
+        override val callId: String,
         val state: VideoState
-    ) : CallEvent()
+    ) : VideoEvent()
 
     /** The real pixel dimensions of a video stream changed (local capture or remote decode). */
-    data class VideoSizeChanged(
-        val callId: String,
+    data class SizeChanged(
+        override val callId: String,
         val isLocal: Boolean,
         val width: Int,
         val height: Int
-    ) : CallEvent()
+    ) : VideoEvent()
+}
 
-    /** Local video transmission was paused or resumed via [Call.setLocalVideoPaused]. */
-    data class LocalVideoPausedChanged(
-        val callId: String,
+
+/**
+ * The remote party's media state, reported via a SIP INFO packet (not a renegotiation).
+ * Mirrors [LocalMediaEvent] for the other side — there is no remote equivalent of
+ * [LocalMediaEvent.SpeakerphoneChanged], a purely local audio-routing decision.
+ */
+sealed class RemoteMediaEvent : CallEvent {
+
+    /** The remote party's hold status changed. */
+    data class HoldChanged(
+        override val callId: String,
+        val isOnHold: Boolean
+    ) : RemoteMediaEvent()
+
+    /** The remote party's microphone mute state changed. */
+    data class MuteChanged(
+        override val callId: String,
+        val isMuted: Boolean
+    ) : RemoteMediaEvent()
+
+    /** The remote party paused or resumed sending video. */
+    data class VideoPausedChanged(
+        override val callId: String,
         val isPaused: Boolean
-    ) : CallEvent()
+    ) : RemoteMediaEvent()
 }

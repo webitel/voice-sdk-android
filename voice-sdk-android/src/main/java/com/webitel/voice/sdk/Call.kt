@@ -12,7 +12,7 @@ interface Call {
      * Unique identifier for this call.
      *
      * Remains constant for the entire lifetime of the call. Use this to correlate
-     * [CallEvent] payloads with a specific Call instance
+     * [CallEvent] payloads with a specific Call instance.
      */
     val id: String
 
@@ -43,7 +43,7 @@ interface Call {
      * This reflects the live state of video streams regardless of how the call was initiated.
      * A call started as [CallType.AUDIO] can have [VideoState.ACTIVE] after [enableVideo] is called.
      *
-     * Changes are also reported via [CallListener.onVideoStateChanged].
+     * Changes are also reported via [CallEventListener.onEvent] with a [VideoEvent.StateChanged] event.
      */
     val videoState: VideoState
 
@@ -53,6 +53,19 @@ interface Call {
      * frames are being sent. Independent of [videoState].
      */
     val isLocalVideoPaused: Boolean
+
+    /** True if the remote party's microphone is muted, as last reported via a SIP INFO packet. */
+    val isRemoteMuted: Boolean
+
+    /** True if the remote party has placed the call on hold, as last reported via a SIP INFO packet. */
+    val isRemoteOnHold: Boolean
+
+    /**
+     * True if the remote party paused sending video without renegotiating the call, as last
+     * reported via a SIP INFO packet. Independent of [videoState] — mirrors [isLocalVideoPaused]
+     * for the remote side.
+     */
+    val isRemoteVideoPaused: Boolean
 
 
     /**
@@ -151,8 +164,8 @@ interface Call {
      * Upgrades an audio-only call to a video call.
      *
      * This is an asynchronous operation — it renegotiates the call with the remote party.
-     * When the remote party accepts, [CallListener.onVideoStateChanged] fires with the new
-     * [VideoState].
+     * When the remote party accepts, [CallEventListener.onEvent] fires with a new
+     * [VideoEvent.StateChanged] event.
      *
      * After receiving the [VideoState.ACTIVE] (or [VideoState.LOCAL_ONLY]) event, attach
      * rendering surfaces via [attachVideoSurfaces].
@@ -169,8 +182,8 @@ interface Call {
      * Downgrades a video call to audio-only.
      *
      * Stops local camera capture and detaches rendering surfaces. Once the renegotiation
-     * with the remote party completes, [CallListener.onVideoStateChanged] fires with
-     * [VideoState.INACTIVE].
+     * with the remote party completes, [CallEventListener.onEvent] fires a [VideoEvent.StateChanged]
+     * event with [VideoState.INACTIVE].
      *
      * Calling this on a call that is already audio-only returns [Result.success] immediately.
      *
@@ -188,8 +201,8 @@ interface Call {
      * While paused: the local camera keeps capturing and the local self-view preview surface
      * keeps rendering the live feed; only the outgoing network stream stops. The remote
      * party's own video session, and what they're sending to us, are unaffected. [videoState]
-     * does not change — observe [isLocalVideoPaused] and
-     * [CallListener.onLocalVideoPausedChanged] / [CallEvent.LocalVideoPausedChanged] instead.
+     * does not change — observe [isLocalVideoPaused] and [CallEventListener.onEvent] with a
+     * [LocalMediaEvent.VideoPausedChanged] event instead.
      *
      * No-op returning [Result.success] if [paused] already matches [isLocalVideoPaused].
      *
@@ -230,7 +243,7 @@ interface Call {
      *
      * @param listener the listener to add
      */
-    fun addListener(listener: CallListener)
+    fun addEventListener(listener: CallEventListener)
 
 
     /**
@@ -238,13 +251,13 @@ interface Call {
      *
      * @param listener the listener to remove
      */
-    fun removeListener(listener: CallListener)
+    fun removeEventListener(listener: CallEventListener)
 
 
     /**
      * Removes all registered listeners.
      */
-    fun removeAllListeners()
+    fun removeAllEventListeners()
 
 
     /**
