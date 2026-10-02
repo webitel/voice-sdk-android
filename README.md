@@ -3,13 +3,15 @@
 
 ## Overview
 
-Webitel Voice SDK provides a simple way to integrate voice calling functionality into your Android applications.  
+Webitel Voice SDK provides a simple way to integrate voice and video calling functionality into your Android applications.  
 
 It offers built-in support for:  
   • User authentication  
-  • Call control (mute, hold, digits, etc.)  
-  • Real-time audio streaming  
-  • Call state and event tracking
+  • Call control (mute, hold, digits, speakerphone, etc.)  
+  • Real-time audio and video streaming  
+  • Upgrading / downgrading video during a call  
+  • Call state, media and video event tracking  
+  • Call rating
 
 
 ## Installation
@@ -47,7 +49,7 @@ val voiceClient = VoiceClient.Builder(
     .logLevel(LogLevel.DEBUG) // Optional
     .build()
 ```
-> Optional parameters: deviceId, appName, appVersion, user
+> Optional parameters: `user`, `deviceId`, `logLevel`, `callSettings`
 
 
 ### Authentication
@@ -77,7 +79,7 @@ voiceClient.setUserJWT("your-jwt-token")
 or
 ```kotlin
 // Provide JWT directly when starting the call
-voiceClient.makeAudioCall("your-jwt-token", callListener)
+voiceClient.makeCall(jwt = "your-jwt-token", listener = listener)
 ```
 > Both options will authorize the user before initiating the call.
 
@@ -85,8 +87,41 @@ voiceClient.makeAudioCall("your-jwt-token", callListener)
 ### Make a Call
 
 ```kotlin
-val call = voiceClient.makeAudioCall(callListener)
+val call = voiceClient.makeCall(listener = listener)
 ```
+
+### Video Call
+
+Start a call with video, or upgrade an ongoing audio call:
+```kotlin
+val call = voiceClient.makeCall(
+    options = CallOptions(type = CallType.VIDEO),
+    listener = listener
+)
+
+call.attachVideoSurfaces(localSurface, remoteSurface)
+
+call.enableVideo()   // audio → video
+call.disableVideo()  // video → audio
+call.switchCamera()  // front ↔ back
+```
+> The SDK does not declare the `CAMERA` permission — add it to your app's manifest and request it at runtime before using video.
+
+See [Video](docs/video.md) for surfaces, orientation, quality presets and local video pause.
+
+### Call Events
+
+```kotlin
+val listener = CallEventListener { event ->
+    when (event) {
+        is ConnectionEvent.StateChanged -> { /* ringing, ongoing, disconnected... */ }
+        is LocalMediaEvent -> { /* mute, hold, speakerphone, video pause */ }
+        is VideoEvent -> { /* video state, frame size */ }
+        is RemoteMediaEvent -> { /* remote mute, hold, video pause */ }
+    }
+}
+```
+> See [Events](docs/events.md) for the full event reference.
 
 ### Call Controls
 
@@ -117,12 +152,30 @@ call.hold(true)
     .onFailure { Log.e(TAG, "Hold error: ${it.message}", it) }
 ```
 
+#### Speakerphone
+
+```kotlin
+call.setSpeakerphoneOn(true)
+    .onSuccess { Log.d(TAG, "Speakerphone on") }
+    .onFailure { Log.e(TAG, "Speakerphone error: ${it.message}", it) }
+```
+
 #### Disconnect Call
 
 ```kotlin
 call.disconnect()
     .onSuccess { Log.d(TAG, "Call ended") }
     .onFailure { Log.e(TAG, "Disconnect error: ${it.message}", it) }
+```
+
+
+#### Rate Call
+
+Available only for calls created with `CallOptions.meetingId`:
+```kotlin
+call.isRatable { result ->
+    if (result.getOrDefault(false)) call.rate("5") { /* Result<Unit> */ }
+}
 ```
 
 
