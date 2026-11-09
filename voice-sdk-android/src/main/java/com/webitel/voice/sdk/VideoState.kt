@@ -5,7 +5,7 @@ package com.webitel.voice.sdk
  * Describes the current video activity state of a call.
  *
  * Updated via [CallEventListener.onEvent] (as a [VideoEvent.StateChanged] event) whenever local or remote
- * video streams start or stop. Also carried in [CallEvent.VideoStateChanged].
+ * video streams start or stop.
  */
 enum class VideoState {
 

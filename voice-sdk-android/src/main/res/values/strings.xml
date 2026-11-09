@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Used by CallNotifications; override them in the app to translate. -->
+<resources>
+    <string name="webitel_call_channel_incoming">Incoming calls</string>
+    <string name="webitel_call_channel_ongoing">Ongoing calls</string>
+    <string name="webitel_call_unknown_caller">Unknown</string>
+    <string name="webitel_call_outgoing">Calling…</string>
+    <string name="webitel_call_on_hold">On hold</string>
+</resources>

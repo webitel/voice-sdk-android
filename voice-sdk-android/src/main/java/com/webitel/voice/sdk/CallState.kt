@@ -7,33 +7,26 @@ package com.webitel.voice.sdk
 sealed class CallState {
 
     /**
-     * The call is idle — no active connection or interaction.
+     * The call was created but signaling hasn't started yet. Short-lived: an outgoing
+     * call moves to [Connecting] right away.
      */
-    object IDLE : CallState() {
-        override fun toString() = "IDLE"
-    }
+    data object Idle : CallState()
 
     /**
      * The call is in the process of connecting (e.g., dialing or setting up signaling).
      */
-    object Connecting : CallState() {
-        override fun toString() = "Connecting"
-    }
+    data object Connecting : CallState()
 
     /**
      * This may indicate that the device is ringing locally (incoming call)
      * or that the remote party is being alerted (outgoing call).
      */
-    object Ringing : CallState() {
-        override fun toString() = "Ringing"
-    }
+    data object Ringing : CallState()
 
     /**
      * The call is active and ongoing.
      */
-    object Ongoing : CallState() {
-        override fun toString() = "Ongoing"
-    }
+    data object Ongoing : CallState()
 
     /**
      * The call has ended or been disconnected.
@@ -57,7 +50,7 @@ sealed class CallState {
  * Checks if the current state is considered logically the same as [other].
  * Ignores different Disconnected reasons.
  */
-fun CallState.isSameAs(other: CallState): Boolean {
+internal fun CallState.isSameAs(other: CallState): Boolean {
     return when {
         this is CallState.Disconnected && other is CallState.Disconnected -> true
         this::class == other::class -> true

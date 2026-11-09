@@ -28,7 +28,7 @@ enum class CallEndCategory {
      * The user was temporarily unavailable.
      *
      * Includes 480 (Temporarily Unavailable), which means the recipient is registered
-     * but currently unreachable, e.g., offline or with poor network.
+     * but currently unreachable, e.g., offline or with poor network, and 404 (Not Found).
      */
     Unavailable,
 

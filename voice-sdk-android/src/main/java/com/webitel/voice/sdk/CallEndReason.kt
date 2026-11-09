@@ -56,7 +56,7 @@ internal enum class CallEndReasonCode(
     PROXY_AUTH_REQUIRED(407, "Proxy authentication required", CallEndCategory.Error),
 
     // Not Found / Not Allowed
-    NOT_FOUND(404, "User not found", CallEndCategory.Canceled),
+    NOT_FOUND(404, "User not found", CallEndCategory.Unavailable),
     METHOD_NOT_ALLOWED(405, "Method not allowed", CallEndCategory.Error),
     NOT_ACCEPTABLE_HERE(488, "Not acceptable here", CallEndCategory.Error),
 

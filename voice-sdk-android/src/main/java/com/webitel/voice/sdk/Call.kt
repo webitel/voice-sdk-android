@@ -5,6 +5,11 @@ import android.view.Surface
 
 /**
  * Represents a phone call and its current state.
+ *
+ * Threading: every method can be called from any thread and never blocks. A method
+ * validates the call state synchronously — returning `Result.failure` with
+ * [CallError.InvalidState] if the operation isn't allowed — and then performs the
+ * operation asynchronously. Its outcome is reported through [CallEvent]s.
  */
 interface Call {
 
@@ -28,11 +33,23 @@ interface Call {
     /** Indicates whether the call is currently on hold. */
     val isOnHold: Boolean
 
-    /** Timestamp in milliseconds when the call was answered. */
+    /** Timestamp in milliseconds when the call was answered; 0 until then. */
     val answeredAt: Long
 
-    /** True if the call was initiated by the local user (outgoing). */
+    /** True if the call was initiated by the local user (outgoing), false for an incoming call. */
     val isOutgoing: Boolean
+
+    /**
+     * Display name of the other party: [CallOptions.toName] for an outgoing call, the
+     * caller's name from the push for an incoming one.
+     */
+    val remoteName: String?
+
+    /**
+     * Number of the other party: [CallOptions.toNumber] for an outgoing call, the
+     * caller's number from the push for an incoming one.
+     */
+    val remoteNumber: String?
 
     /** The media type the call was initiated with. See [videoState] for the live video activity. */
     val type: CallType
@@ -54,6 +71,17 @@ interface Call {
      */
     val isLocalVideoPaused: Boolean
 
+    /**
+     * True while the front camera feeds the local video (the default), false after
+     * [switchCamera] selected the back camera.
+     *
+     * The SDK sends the remote party a non-mirrored image and renders the local preview from
+     * the same frames, so the preview is not mirrored either. Mirror the local preview view
+     * yourself while this is true (e.g. `textureView.scaleX = -1f`) so it behaves like a mirror
+     * when the device is tilted. Re-check after [switchCamera] succeeds.
+     */
+    val isFrontCamera: Boolean
+
     /** True if the remote party's microphone is muted, as last reported via a SIP INFO packet. */
     val isRemoteMuted: Boolean
 
@@ -66,6 +94,27 @@ interface Call {
      * for the remote side.
      */
     val isRemoteVideoPaused: Boolean
+
+    /**
+     * How well media is delivered between you and the other party — depends on the networks
+     * of both sides. Estimated every few seconds from RTCP statistics while the call is
+     * [CallState.Ongoing] and not on hold;
+     * [ConnectionQuality.UNKNOWN] otherwise. Changes are reported with
+     * [ConnectionEvent.QualityChanged].
+     */
+    val connectionQuality: ConnectionQuality
+
+
+    /**
+     * Answers an incoming call. Allowed only for an incoming call in [CallState.Ringing].
+     *
+     * Can be called before the call actually arrived from the server (right after
+     * [VoiceClient.handleIncomingPush]); it is then answered as soon as it arrives.
+     * The call moves to [CallState.Connecting], then to [CallState.Ongoing].
+     *
+     * The call is answered audio-only; video can be added with [enableVideo].
+     */
+    fun answer(): Result<Unit>
 
 
     /**
@@ -221,8 +270,10 @@ interface Call {
      * `DisplayManager.DisplayListener` callback. The SDK adjusts the camera capture
      * orientation and encoder dimensions without renegotiating the call.
      *
-     * - [VideoOrientation.PORTRAIT] (default): 9:16 encoding, phone held upright.
-     * - [VideoOrientation.LANDSCAPE]: 16:9 encoding, phone rotated sideways.
+     * - [VideoOrientation.PORTRAIT] / [VideoOrientation.PORTRAIT_REVERSED]: 9:16 encoding.
+     * - [VideoOrientation.LANDSCAPE_RIGHT] / [VideoOrientation.LANDSCAPE_LEFT]: 16:9 encoding.
+     *
+     * Use [VideoOrientation.fromRotation] to convert the current display rotation.
      *
      * @param orientation the new device orientation
      * @return [Result.success] if applied, [Result.failure] if the call is not [CallState.Ongoing].
@@ -231,9 +282,11 @@ interface Call {
 
 
     /**
-     * Attempts to disconnect (hang up) the current call.
+     * Hangs up the call. For an incoming call that hasn't been answered yet, declines it
+     * (SIP 486, or 600 with [CallSettings.busyEverywhereUse]).
      *
-     * @return Result.success(Unit) if the call was disconnected successfully, or Result.failure with the error.
+     * @return Result.success(Unit) if the hangup was started — the call then moves to
+     *         [CallState.Disconnected]; Result.failure if it is already disconnected.
      */
     fun disconnect(): Result<Unit>
 
@@ -255,19 +308,14 @@ interface Call {
 
 
     /**
-     * Removes all registered listeners.
-     */
-    fun removeAllEventListeners()
-
-
-    /**
      * Checks whether this call is eligible for rating.
      *
      * Only calls created with a `meetingId` (see `CallOptions.meetingId`) can be rated.
      * If no `meetingId` was set, [callback] is invoked immediately with `Result.success(false)`
      * and no network request is made. Otherwise this performs a network request to the backend.
      *
-     * @param callback invoked with the result once the check completes.
+     * @param callback invoked with the result once the check completes — on the calling
+     *        thread when there is no `meetingId`, otherwise on a background thread.
      */
     fun isRatable(callback: (Result<Boolean>) -> Unit)
 
@@ -277,7 +325,8 @@ interface Call {
      *
      * @param satisfaction the rating value, passed through to the backend as-is (no validation
      *        or constraint on its contents is applied by the SDK).
-     * @param callback invoked with the result once the submission completes.
+     * @param callback invoked with the result once the submission completes — on the calling
+     *        thread when there is no `meetingId`, otherwise on a background thread.
      *
      * @return via [callback] `Result.failure` if the call has no `meetingId` (see [isRatable]),
      *         or the outcome of the network request otherwise.

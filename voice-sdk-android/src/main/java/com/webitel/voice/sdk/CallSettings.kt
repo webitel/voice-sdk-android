@@ -2,8 +2,9 @@ package com.webitel.voice.sdk
 
 
 /**
- * Advanced network/transport configuration for calls: signaling transport, NAT traversal,
- * and media encryption. Pass a configured instance to [VoiceClient.Builder.callSettings].
+ * Client-wide configuration for calls: signaling transport, NAT traversal, media encryption
+ * and [videoQuality]. Pass a configured instance to [VoiceClient.Builder.callSettings], or
+ * replace it later with [VoiceClient.configure].
  *
  * The defaults are suitable for most deployments; only change these if your network
  * environment (NAT, firewall, media encryption policy) requires it.
@@ -12,19 +13,21 @@ class CallSettings {
     constructor()
 
     /**
-     * Constructs settings from raw ordinal values, primarily for cross-platform bridging
+     * Constructs settings from raw enum `value`s, primarily for cross-platform bridging
      * (e.g. Flutter platform channels) where enums travel as integers.
      *
-     * @param transport ordinal of [TransportUse].
-     * @param natMediaStunUse ordinal of [MediaStunUse] for media (RTP) traffic.
-     * @param natSipStunUse ordinal of [MediaStunUse] for call signaling traffic.
+     * @throws IllegalArgumentException if an enum value is unknown.
+     *
+     * @param transport [TransportUse.value].
+     * @param natMediaStunUse [MediaStunUse.value] for media (RTP) traffic.
+     * @param natSipStunUse [MediaStunUse.value] for call signaling traffic.
      * @param natIceEnabled whether ICE NAT traversal is enabled.
      * @param natSdpNatRewriteUse whether to rewrite NAT'd addresses in the session description.
      * @param natContactRewriteUse whether to rewrite the contact address behind NAT.
      * @param natViaRewriteUse whether to rewrite the via address behind NAT.
      * @param busyEverywhereUse whether to report "busy everywhere" when declining calls.
      * @param srtpSecureSignaling required signaling security level for SRTP.
-     * @param srtpUse ordinal of [SrtpUse].
+     * @param srtpUse [SrtpUse.value].
      */
     constructor (
         transport: Int,
@@ -38,15 +41,15 @@ class CallSettings {
         srtpSecureSignaling: Int,
         srtpUse: Int
     ) {
-        this.transport = TransportUse.values()[transport]
-        this.natMediaStunUse = MediaStunUse.values()[natMediaStunUse]
-        this.natSipStunUse = MediaStunUse.values()[natSipStunUse]
+        this.transport = TransportUse.fromValue(transport)
+        this.natMediaStunUse = MediaStunUse.fromValue(natMediaStunUse)
+        this.natSipStunUse = MediaStunUse.fromValue(natSipStunUse)
         this.natIceEnabled = natIceEnabled
         this.natSdpNatRewriteUse = natSdpNatRewriteUse
         this.natContactRewriteUse = natContactRewriteUse
         this.natViaRewriteUse = natViaRewriteUse
         this.srtpSecureSignaling = srtpSecureSignaling
-        this.srtpUse = SrtpUse.values()[srtpUse]
+        this.srtpUse = SrtpUse.fromValue(srtpUse)
         this.busyEverywhereUse = busyEverywhereUse
     }
 
@@ -77,14 +80,24 @@ class CallSettings {
     /** SRTP (media encryption) usage policy. */
     var srtpUse: SrtpUse = SrtpUse.DISABLED
 
-    /** Whether to report "busy everywhere" instead of "busy here" when declining a call. */
+    /**
+     * Whether declining an unanswered incoming call responds with 600 Busy Everywhere
+     * (stops the call ringing on the user's other devices) instead of 486 Busy Here.
+     */
     var busyEverywhereUse: Boolean = false
+
+    /**
+     * Video encoding preset for all calls of the client. Default: [VideoQuality.MEDIUM].
+     * Changed through [VoiceClient.configure], it applies to calls started afterwards.
+     */
+    var videoQuality: VideoQuality = VideoQuality.DEFAULT
 
 
     override fun toString(): String {
         return "transport: ${transport}; natMediaStunUse: $natMediaStunUse; natSipStunUse: $natSipStunUse; " +
                 "natIceEnabled: $natIceEnabled; natSdpNatRewriteUse: $natSdpNatRewriteUse; natContactRewriteUse: $natContactRewriteUse" +
-                "; natViaRewriteUse: $natViaRewriteUse; srtpSecureSignaling: $srtpSecureSignaling; srtpUse: $srtpUse"
+                "; natViaRewriteUse: $natViaRewriteUse; srtpSecureSignaling: $srtpSecureSignaling; srtpUse: $srtpUse" +
+                "; busyEverywhereUse: $busyEverywhereUse; videoQuality: $videoQuality"
     }
 
 
@@ -92,7 +105,13 @@ class CallSettings {
     enum class SrtpUse(val value: Int) {
         DISABLED(0),
         OPTIONAL(1),
-        MANDATORY(2)
+        MANDATORY(2);
+
+        internal companion object {
+            fun fromValue(value: Int): SrtpUse =
+                entries.firstOrNull { it.value == value }
+                    ?: throw IllegalArgumentException("Unknown SrtpUse value: $value")
+        }
     }
 
 
@@ -101,7 +120,13 @@ class CallSettings {
         UDP(0),
         TCP(1),
         TCP_UDP(2),
-        TLS(3)
+        TLS(3);
+
+        internal companion object {
+            fun fromValue(value: Int): TransportUse =
+                entries.firstOrNull { it.value == value }
+                    ?: throw IllegalArgumentException("Unknown TransportUse value: $value")
+        }
     }
 
 
@@ -109,6 +134,12 @@ class CallSettings {
     enum class MediaStunUse(val value: Int) {
         DEFAULT(0),
         DISABLED(1),
-        RETRY_ON_FAILURE(2)
+        RETRY_ON_FAILURE(2);
+
+        internal companion object {
+            fun fromValue(value: Int): MediaStunUse =
+                entries.firstOrNull { it.value == value }
+                    ?: throw IllegalArgumentException("Unknown MediaStunUse value: $value")
+        }
     }
 }

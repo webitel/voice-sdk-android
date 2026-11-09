@@ -1,51 +1,49 @@
 package com.webitel.voice.sdk.internal.sip
 
-import com.webitel.voice.sdk.internal.voice.WebitelVoiceClient.Companion.logger
+import com.webitel.voice.sdk.internal.support.SdkLogger
+import com.webitel.voice.sdk.internal.support.SdkThreads
 import org.pjsip.pjsua2.Account
 import org.pjsip.pjsua2.OnIncomingCallParam
 import org.pjsip.pjsua2.OnRegStateParam
-import java.lang.Exception
+import org.pjsip.pjsua2.pj_constants_
+import org.pjsip.pjsua2.pjsip_status_code
 
 
 internal class PJAccount(
-    val config: SipConfig
+    val config: SipConfig,
+    private val listener: SipEventListener
 ): Account() {
-
-    private var isRegistered: Boolean = false
 
     override fun onRegState(prm: OnRegStateParam?) {
         super.onRegState(prm)
-        prm?.let {
-            val code = it.code
-            val expiration = it.expiration.toInt()
-            try {
-                val returnCode: Int = code
-                if (returnCode / 100 == 2 && expiration != 0) {
-                    if (!isRegistered) {
-                        isRegistered = true
-                    }
-                } else {
-                    isRegistered = false
+        prm ?: return
+        val isSuccess = prm.code / 100 == 2
+        // The final unREGISTER (expiration 0) is irrelevant unless it failed.
+        if (isSuccess && prm.expiration == 0L) return
 
-                }
-            } catch (e: Exception) {
-                isRegistered = false
-            }
+        // No final response at all (e.g. a transport error) is reported as a timeout.
+        val code = if (prm.code == 0 && prm.status != pj_constants_.PJ_SUCCESS) {
+            pjsip_status_code.PJSIP_SC_REQUEST_TIMEOUT
+        } else {
+            prm.code
         }
+        val reason = prm.reason.orEmpty()
+        SdkThreads.postSip { listener.onRegistrationState(code, reason) }
     }
 
 
     override fun onIncomingCall(prm: OnIncomingCallParam) {
-        var wid = ""
-        val msg  = prm.rdata.wholeMsg
-        val index = msg.indexOf("X-Webitel-Uuid")
-        if (index != -1) {
-            val m = msg.substring(index)
-            val s = m.split("\r\n").first().toString()
-            wid = s.substring(s.indexOf(':')).trim(':', ' ')
+        val sipId = prm.callId
+        val callUuid = try {
+            SipHeaders.webitelUuid(prm.rdata.wholeMsg)
+        } catch (e: Exception) {
+            SdkLogger.error("PJAccount", "onIncomingCall: failed to read INVITE: ${e.message}")
+            null
         }
+        SdkLogger.debug("PJAccount", "onIncomingCall: sipId - $sipId; X-Webitel-Uuid - $callUuid")
 
-        logger.debug("PJAccount", "======== Incoming call ======== \n" +
-                "id - ${prm.callId}; wid - $wid")
+        // Must be created before this callback returns, or PJSIP rejects the call with 500.
+        val call = PJCall(this, sipId, listener)
+        SdkThreads.postSip { listener.onIncomingCall(call, callUuid) }
     }
 }

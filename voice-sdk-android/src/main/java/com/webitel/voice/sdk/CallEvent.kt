@@ -9,7 +9,7 @@ package com.webitel.voice.sdk
  * Flutter `EventChannel` serialization.
  *
  * Events are grouped by nature of the change:
- *  - [ConnectionEvent] — the call's connection lifecycle.
+ *  - [ConnectionEvent] — the call's connection lifecycle and quality.
  *  - [LocalMediaEvent] — local media controls toggled through [Call] methods.
  *  - [VideoEvent] — combined video activity and stream geometry.
  *  - [RemoteMediaEvent] — the remote party's media state, reported via SIP INFO.
@@ -19,13 +19,22 @@ sealed interface CallEvent {
 }
 
 
-/** The call's connection lifecycle. */
+/** The call's connection lifecycle and quality. */
 sealed class ConnectionEvent : CallEvent {
 
     /** The call moved to a new [CallState] (e.g. ringing, connecting, ongoing, disconnected). */
     data class StateChanged(
         override val callId: String,
         val state: CallState
+    ) : ConnectionEvent()
+
+    /**
+     * The estimated connection quality changed — see [Call.connectionQuality]. Not reported when
+     * the call ends: [Call.connectionQuality] then silently becomes [ConnectionQuality.UNKNOWN].
+     */
+    data class QualityChanged(
+        override val callId: String,
+        val quality: ConnectionQuality
     ) : ConnectionEvent()
 }
 
