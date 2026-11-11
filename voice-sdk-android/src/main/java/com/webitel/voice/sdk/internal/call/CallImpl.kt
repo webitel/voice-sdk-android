@@ -97,6 +97,12 @@ internal class CallImpl(
     override var connectionQuality: ConnectionQuality = ConnectionQuality.UNKNOWN
         private set
 
+    /** Remote hold as last reported via the SIP INFO `hold` flag (only our SDKs send it). SIP thread only. */
+    private var remoteHoldByInfo = false
+
+    /** The remote party holds the audio via SDP (`PJSUA_CALL_MEDIA_REMOTE_HOLD`). SIP thread only. */
+    private var remoteHoldBySdp = false
+
     private val qualityMonitor = ConnectionQualityMonitor(object : ConnectionQualityMonitor.Host {
         override val isEnded: Boolean get() = state is CallState.Disconnected
         override val isPaused: Boolean get() = isOnHold || isRemoteOnHold
@@ -614,14 +620,33 @@ internal class CallImpl(
             isRemoteMuted = audioMuted
             notify(RemoteMediaEvent.MuteChanged(id, audioMuted))
         }
-        if (hold != null && hold != isRemoteOnHold) {
-            isRemoteOnHold = hold
-            notify(RemoteMediaEvent.HoldChanged(id, hold))
+        if (hold != null) {
+            remoteHoldByInfo = hold
+            updateRemoteHold()
         }
         if (videoMuted != null && videoMuted != isRemoteVideoPaused) {
             isRemoteVideoPaused = videoMuted
             notify(RemoteMediaEvent.VideoPausedChanged(id, videoMuted))
         }
+    }
+
+
+    /**
+     * The remote party put the audio on hold (or released it) via SDP. Merged with the SIP INFO
+     * flag, so an SDK peer sending both produces a single [RemoteMediaEvent.HoldChanged].
+     * SIP thread only.
+     */
+    fun onRemoteSdpHoldChanged(held: Boolean) {
+        remoteHoldBySdp = held
+        updateRemoteHold()
+    }
+
+
+    private fun updateRemoteHold() {
+        val hold = remoteHoldByInfo || remoteHoldBySdp
+        if (hold == isRemoteOnHold) return
+        isRemoteOnHold = hold
+        notify(RemoteMediaEvent.HoldChanged(id, hold))
     }
 
 

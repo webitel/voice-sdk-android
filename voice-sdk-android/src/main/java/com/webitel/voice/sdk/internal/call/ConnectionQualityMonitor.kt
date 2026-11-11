@@ -12,7 +12,7 @@ import java.util.concurrent.ScheduledFuture
  *
  * Loss is the worse of two directions:
  *  - incoming — computed per sample from the gaps in RTP sequence numbers PJSIP sees;
- *  - outgoing — known only from the remote party's RTCP receiver reports (~1 per 5 s), so
+ *  - outgoing — known only from the media server's RTCP receiver reports (~1 per 5 s), so
  *    it is computed between two reports, and the last value is kept until the next one.
  *    Computing it per sample instead would overstate it ~2.5× when a report arrives and
  *    read 0 in between.

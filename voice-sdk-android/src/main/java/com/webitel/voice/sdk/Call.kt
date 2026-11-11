@@ -85,7 +85,11 @@ interface Call {
     /** True if the remote party's microphone is muted, as last reported via a SIP INFO packet. */
     val isRemoteMuted: Boolean
 
-    /** True if the remote party has placed the call on hold, as last reported via a SIP INFO packet. */
+    /**
+     * True if the remote party has placed the call on hold — reported via a SIP INFO packet or an
+     * SDP renegotiation (sendonly/inactive). While this side holds the call too, an SDP hold
+     * becomes visible only after this side resumes.
+     */
     val isRemoteOnHold: Boolean
 
     /**
@@ -96,8 +100,8 @@ interface Call {
     val isRemoteVideoPaused: Boolean
 
     /**
-     * How well media is delivered between you and the other party — depends on the networks
-     * of both sides. Estimated every few seconds from RTCP statistics while the call is
+     * Estimated quality of this device's connection to the media server (not the other
+     * party's). Measured every few seconds from RTCP statistics while the call is
      * [CallState.Ongoing] and not on hold;
      * [ConnectionQuality.UNKNOWN] otherwise. Changes are reported with
      * [ConnectionEvent.QualityChanged].

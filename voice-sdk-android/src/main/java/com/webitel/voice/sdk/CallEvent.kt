@@ -12,7 +12,7 @@ package com.webitel.voice.sdk
  *  - [ConnectionEvent] — the call's connection lifecycle and quality.
  *  - [LocalMediaEvent] — local media controls toggled through [Call] methods.
  *  - [VideoEvent] — combined video activity and stream geometry.
- *  - [RemoteMediaEvent] — the remote party's media state, reported via SIP INFO.
+ *  - [RemoteMediaEvent] — the remote party's media state, reported via SIP INFO (hold also via SDP).
  */
 sealed interface CallEvent {
     val callId: String
@@ -91,13 +91,14 @@ sealed class VideoEvent : CallEvent {
 
 
 /**
- * The remote party's media state, reported via a SIP INFO packet (not a renegotiation).
+ * The remote party's media state, reported via a SIP INFO packet; hold is also detected
+ * from an SDP renegotiation.
  * Mirrors [LocalMediaEvent] for the other side — there is no remote equivalent of
  * [LocalMediaEvent.SpeakerphoneChanged], a purely local audio-routing decision.
  */
 sealed class RemoteMediaEvent : CallEvent {
 
-    /** The remote party's hold status changed. */
+    /** The remote party's hold status changed (SIP INFO or SDP renegotiation, see [Call.isRemoteOnHold]). */
     data class HoldChanged(
         override val callId: String,
         val isOnHold: Boolean

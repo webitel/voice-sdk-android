@@ -39,10 +39,10 @@ internal fun CallOpParam.setMediaCount(videoCount: Long): CallOpParam = apply {
 /**
  * Cumulative RTCP counters of one media stream, copied out of a SWIG `StreamStat`.
  *
- * @property rxPkt packets received from the remote party.
- * @property rxLoss packets from the remote party lost on the way to us.
- * @property txPkt packets sent to the remote party.
- * @property txLoss our packets the remote party reported lost (RTCP receiver reports).
+ * @property rxPkt packets received from the media server.
+ * @property rxLoss packets from the media server lost on the way to us.
+ * @property txPkt packets sent to the media server.
+ * @property txLoss our packets the media server reported lost (RTCP receiver reports).
  * @property txReports number of RTCP receiver reports received so far (~1 per 5 s); [txLoss]
  *           and [rttMs] only change when it does.
  * @property rttMs last round-trip time in milliseconds; 0 until measured.

@@ -267,10 +267,19 @@ internal class VoiceManager private constructor(
 
         for (media in medias.filter { it.isAudio }) {
             when (media.status) {
+                // While we hold, PJSIP reports LOCAL_HOLD whatever the remote party does, so the
+                // remote SDP hold is unknown here and is left as is.
                 pjsua_call_media_status.PJSUA_CALL_MEDIA_LOCAL_HOLD -> call.onHoldChanged(true)
                 pjsua_call_media_status.PJSUA_CALL_MEDIA_ACTIVE -> {
+                    call.onRemoteSdpHoldChanged(false)
                     registry.setActive(call)
                     holdOtherCalls(exceptId = call.id)
+                    call.onHoldChanged(false)
+                }
+                // The remote party put the call on hold via SDP (sendonly/inactive). PJSIP reports
+                // REMOTE_HOLD only when we don't hold, so our own hold is off.
+                pjsua_call_media_status.PJSUA_CALL_MEDIA_REMOTE_HOLD -> {
+                    call.onRemoteSdpHoldChanged(true)
                     call.onHoldChanged(false)
                 }
             }
