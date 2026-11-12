@@ -68,6 +68,7 @@ internal class SipManager(
                 headers.add(header)
             }
             options.meetingId?.takeIf { it.isNotEmpty() }?.let { addHeader("X-Webitel-Meeting", it) }
+            encodeMetadata(options.metadata)?.let { addHeader(CallMetadataEncoder.HEADER, it) }
             addHeader("X-FS-Support", "update_display,send_info")
             callOpParam.txOption.headers = headers
 
@@ -88,6 +89,26 @@ internal class SipManager(
         SdkLogger.debug(TAG, "makeCall: sipId - $sipId")
         return sipId
     }
+
+
+    /** Values are never logged: they may contain personal data. */
+    private fun encodeMetadata(metadata: Map<String, String>): String? =
+        when (val result = CallMetadataEncoder.encode(metadata)) {
+            is CallMetadataEncoder.Result.Encoded -> result.value?.also {
+                SdkLogger.debug(
+                    TAG,
+                    "makeCall: metadata keys ${metadata.keys.filter { k -> k.isNotEmpty() }.sorted()}, " +
+                        "${it.length} bytes"
+                )
+            }
+            is CallMetadataEncoder.Result.TooLarge -> {
+                SdkLogger.warn(
+                    TAG,
+                    "makeCall: metadata is ${result.bytes} bytes, limit is ${CallOptions.MAX_METADATA_BYTES}; not sent"
+                )
+                null
+            }
+        }
 
 
     /**
